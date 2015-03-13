@@ -37,18 +37,21 @@ class Pylearn2DatasetNoise(Dataset):
     Parameters
     ----------
     dataset: `pylearn2.dataset` object 
-        Note that this is expecting the actual the object will be initialized inside
+        Note that this is expecting the actual the object will be 
+        initialized inside
     batch_size: int
         Batch size to be used by the `pylearn2.dataset` iterator.
     noise_dim: int
         Dimmension of the noise batch
     '''
-    def __init__(self, dataset, batch_size, noise_dim,  **kwargs):
+    def __init__(self, dataset, batch_size, noise_dim, which_sources=[0,1], 
+                **kwargs):
         self.pylearn2_dataset = dataset
         self.sources = self.pylearn2_dataset.get_data_specs()[1]
         self.sources = self.sources + tuple('eps')
         self.batch_size = batch_size 
         self.noise_dim = noise_dim
+        self.which_sources = which_sources
     def open(self):
         num_examples = self.pylearn2_dataset.get_num_examples()
         iterator = self.pylearn2_dataset.iterator(
@@ -60,6 +63,7 @@ class Pylearn2DatasetNoise(Dataset):
         return iterator    
     def get_data(self,state=None,request=None):
         batch = next(state)
+        batch = (batch[i] for i in self.which_sources)
         eps = np.random.normal(0,1,size=(batch[0].shape[0], 
                                batch[0].shape[1], self.noise_dim))
         batch = batch + tuple(eps)
