@@ -1,5 +1,7 @@
 from fuel.datasets import Dataset
 import numpy as np
+import theano
+floatX = theano.config.floatX
 
 class Pylearn2Dataset(Dataset):
     '''Pylearn2Dataset wraps a `pylearn2.dataset` object and adds only the
@@ -67,6 +69,7 @@ class Pylearn2DatasetNoise(Dataset):
         batch = next(state)
         batch = [batch[i] for i in self.which_sources]
         eps = np.random.normal(0,1,size=(batch[0].shape[0], 
-                               batch[0].shape[1], self.noise_dim))
+                               batch[0].shape[1], 
+                               self.noise_dim)).astype(floatX)
         batch = tuple(batch + list(eps))
         return batch
