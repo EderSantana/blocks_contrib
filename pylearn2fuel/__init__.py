@@ -48,6 +48,7 @@ class Pylearn2DatasetNoise(Dataset):
                 **kwargs):
         self.pylearn2_dataset = dataset
         self.sources = self.pylearn2_dataset.get_data_specs()[1]
+        self.sources = [self.sources[i] for i in which_sources]
         self.sources = self.sources + tuple('eps')
         self.batch_size = batch_size 
         self.noise_dim = noise_dim
