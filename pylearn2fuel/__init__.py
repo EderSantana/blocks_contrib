@@ -19,12 +19,12 @@ class Pylearn2Dataset(Dataset):
 
     def open(self):
         num_examples = self.pylearn2_dataset.get_num_examples()
-        return self.pylearn2_dataset.iterator(
+        iterator = self.pylearn2_dataset.iterator(
                    self.batch_size,
                    num_examples/self.batch_size,
                    mode='sequential',
                    data_specs=self.pylearn2_dataset.get_data_specs(),
                    return_tuple=True)
-            
+        return iterator    
     def get_data(self,state=None,request=None):
         return next(state)
