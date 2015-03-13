@@ -72,5 +72,6 @@ class Pylearn2DatasetNoise(Dataset):
         eps = np.random.normal(0,1,size=(timelen, 
                                self.batch_size, 
                                self.noise_dim)).astype(floatX)
+        print eps.shape
         batch = batch + tuple(eps)
         return batch
