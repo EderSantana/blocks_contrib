@@ -52,7 +52,7 @@ class Pylearn2DatasetNoise(Dataset):
         self.sources = self.pylearn2_dataset.get_data_specs()[1]
         self.sources = tuple([self.sources[i] for i in which_sources])
         self.sources = self.sources + tuple('eps')
-        self.sources = ['features', 'eps']
+        self.sources = ['features', 'targets', 'eps']
         self.batch_size = batch_size 
         self.noise_dim = noise_dim
         self.which_sources = which_sources
@@ -72,6 +72,5 @@ class Pylearn2DatasetNoise(Dataset):
         eps = np.random.normal(0,1,size=(timelen, 
                                self.batch_size, 
                                self.noise_dim)).astype(floatX)
-        print eps.shape
         batch = batch + tuple(eps)
         return batch
