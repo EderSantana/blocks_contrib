@@ -59,6 +59,7 @@ class Pylearn2DatasetNoise(Dataset):
         return iterator    
     def get_data(self,state=None,request=None):
         batch = next(state)
-        eps = np.random.normal(0,1,size=self.noise_dim)
+        eps = np.random.normal(0,1,size=(batch[0].shape[0], 
+                               batch[0].shape[1], self.noise_dim))
         batch.append(eps)
         return batch
