@@ -7,13 +7,51 @@ from theano import tensor, function
 
 from blocks import initialization
 from blocks.bricks import Identity, Linear
-from blocks.bricks.recurrent import SimpleRecurrent
+from blocks.bricks.recurrent import SimpleRecurrent, LSTM
 from blocks.initialization import Constant
 
 from blocks_contrib.bricks.recurrent import DelayLine
-from blocks_contrib.bricks.recurrent import Unfolder
+from blocks_contrib.bricks.recurrent import Unfolder, UnfolderLSTM
 
 logger = logging.getLogger(__name__)
+
+def test_constant_input_lstm():
+    x = tensor.matrix('x')
+    proto = LSTM(activation=Identity(), dim=1,
+                weights_init=Constant(1/4.),
+                biases_init=Constant(0.))
+    proto.initialize()
+
+    flagger = Linear(input_dim=1, output_dim=1,
+                     weights_init=Constant(1./2.),
+                     biases_init=Constant(0.))
+    flagger.initialize()
+
+    inp2hid = Linear(input_dim=1, output_dim=4,
+                     weights_init=Constant(1/4.),
+                     biases_init=Constant(0))
+    inp2hid.initialize()
+
+    rnn = UnfolderLSTM(proto, flagger)
+    rnn.initialize()
+
+    h = inp2hid.apply(x)
+    y = rnn.apply(inputs=h, n_steps=10, batch_size=5)
+
+    F = function([x],y)
+    X = np.ones((5,1)).astype(theano.config.floatX)
+
+    H = function([x], flagger.apply(x))
+    T = H(X)
+    #print T
+
+    Y = F(X)
+    print Y
+    print Y[0].shape
+
+    assert Y[0].shape == (4,5,1)
+    #target = np.cumsum(np.ones((6,1,1)),axis=0)
+    #assert_allclose(Y, target)
 
 def test_constant_input():
     x = tensor.matrix('x')
@@ -26,7 +64,7 @@ def test_constant_input():
                      biases_init=Constant(0.))
     flagger.initialize()
 
-    rnn   = Unfolder(proto, flagger)
+    rnn = Unfolder(proto, flagger)
     rnn.initialize()
 
     y = rnn.apply(inputs=x, n_steps=10, batch_size=1)
@@ -42,7 +80,7 @@ def test_constant_input():
     print Y
 
     target = np.cumsum(np.ones((5,1,1)),axis=0)
-    assert_allclose(Y, target)
+    assert_allclose(Y[0], target)
 
 def test_delay_line():
     x = tensor.tensor3('x')
@@ -68,3 +106,4 @@ def test_delay_line():
 if __name__ == '__main__':
     #test_delay_line()
     test_constant_input()
+    test_constant_input_lstm()

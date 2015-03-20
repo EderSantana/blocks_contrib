@@ -40,16 +40,63 @@ class Unfolder(Initializable, BaseRecurrent):
 
     #def initial_state(self, state_name, batch_size, *args, **kwargs):
 
-    @recurrent(sequences=[], states=['states'], outputs=['states'],
+    @recurrent(sequences=[], states=['states'], outputs=['states', 'flags'],
                contexts=['inputs'])
-    def apply(self, inputs=None, states=None):
-        outputs = self.children[0].apply(inputs=inputs, states=states,
-                                         iterate=False)
-
+    def apply(self, inputs=None, states=None, **kwargs):
+        outputs = self.children[0].apply(
+                           inputs=inputs,
+                           states=states,
+                           iterate=False,
+                           **kwargs)
         flags = self.children[1].apply(outputs).sum()
         stop_condition = flags >= .5
-        return outputs, until( stop_condition )
+        outputs = [outputs, flags]
+        return outputs, until(stop_condition)
     #TODO define outputs_info, define RecurrentFlag class
+
+class UnfolderLSTM(Initializable, BaseRecurrent):
+    """UnfolderLSTM network
+
+    A recurrent network that unfolds an input vector to a sequence.
+
+    Parameters
+    ----------
+    prototype : instance of :class:`LSTM`
+        A brick that will get the input vector.
+
+    flagger : instance of :class:`Brick``
+        A brick that will flag when to stop the loop
+
+    Notes
+    -----
+    See :class:`.Initializable` for initialization parameters.
+
+    """
+    @lazy
+    def __init__(self, prototype, flagger, **kwargs):
+        super(UnfolderLSTM, self).__init__(**kwargs)
+        self.children = [prototype, flagger]
+
+    def get_dim(self, name):
+        if name in ('inputs', 'states', 'cells'):
+            return self.children[0].get_dim(name)
+        else:
+            return super(UnfolderLSTM, self).get_dim(name)
+
+    #def initial_state(self, state_name, batch_size, *args, **kwargs):
+
+    @recurrent(sequences=[], states=['states', 'cells'],
+               outputs=['states','cells', 'flags'], contexts=['inputs'])
+    def apply(self, inputs=None, states=None, cells=None, **kwargs):
+        outputs = self.children[0].apply(inputs=inputs,
+                                         cells=cells,
+                                         states=states,
+                                         iterate=False,
+                                         **kwargs)
+        flags = self.children[1].apply(outputs[0]).sum()
+        stop_condition = flags >= .5
+        outputs.append(flags)
+        return outputs, until(stop_condition)
 
 class DelayLine(BaseRecurrent, Initializable):
     """Store and (optionally transform) previous inputs in a delay line

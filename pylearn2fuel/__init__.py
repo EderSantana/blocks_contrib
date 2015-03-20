@@ -35,7 +35,7 @@ class Pylearn2Dataset(Dataset):
     def get_data(self,state=None,request=None):
         batch = next(state)
         batch = tuple([batch[i] for i in self.which_sources])
-        return (batch,)
+        return batch
 
 class Pylearn2DatasetNoise(Dataset):
     '''Pylearn2DatasetNoise is the same as `Pylearn2Dataset` with some an
