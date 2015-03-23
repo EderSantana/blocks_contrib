@@ -138,6 +138,10 @@ class DelayLine(BaseRecurrent, Initializable):
     @recurrent(sequences=['inputs', 'mask'], states=['states'],
                outputs=['states'], contexts=[])
     def apply(self, inputs=None, states=None, mask=None):
+        '''TODO
+        Delay line should support mask to handle differently
+        sized sequences
+        '''
         mu, = self.params
         mu = tensor.clip(mu, -1., 1.)
         m_new = states[:,:-self.input_dim]
