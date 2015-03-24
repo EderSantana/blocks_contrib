@@ -7,7 +7,90 @@ from blocks.roles import add_role, WEIGHT
 from blocks.utils import shared_floatx_nans
 from blocks.bricks.recurrent import BaseRecurrent, recurrent
 
-#class GammaRecurrent(SimpleRecurrent):
+class UnfolderLSTMTake2(Initializable, BaseRecurrent):
+    """UnfolderLSTM network
+
+    A recurrent network that unfolds an input vector to a sequence.
+
+    Parameters
+    ----------
+    prototype : instance of :class:`LSTM`
+        A brick that will get the input vector.
+
+    flagger : instance of :class:`Brick``
+        A brick that will flag when to stop the loop
+
+    Notes
+    -----
+    See :class:`.Initializable` for initialization parameters.
+
+    """
+    @lazy
+    def __init__(self, prototype, **kwargs):
+        super(UnfolderLSTMTake2, self).__init__(**kwargs)
+        self.children = [prototype]
+
+    def get_dim(self, name):
+        if name in ('inputs', 'states', 'cells'):
+            return self.children[0].get_dim(name)
+        else:
+            return super(UnfolderLSTMTake2, self).get_dim(name)
+
+    #def initial_state(self, state_name, batch_size, *args, **kwargs):
+
+    @recurrent(sequences=[], states=['states', 'cells'],
+               outputs=['states','cells'], contexts=['inputs'])
+    def apply(self, inputs=None, states=None, cells=None, **kwargs):
+        outputs = self.children[0].apply(inputs=inputs,
+                                         cells=cells,
+                                         states=states,
+                                         iterate=False,
+                                         **kwargs)
+        return outputs
+
+class UnfolderTake2(Initializable, BaseRecurrent):
+    """Unfolder network
+
+    A recurrent network that unfolds an input vector to a sequence.
+
+    Parameters
+    ----------
+    prototype : instance of :class:`BaseRecurrent`
+        A brick that will get the input vector.
+
+    flagger : instance of :class:`Brick``
+        A brick that will flag when to stop the loop
+
+    Notes
+    -----
+    See :class:`.Initializable` for initialization parameters.
+
+    """
+    @lazy
+    def __init__(self, prototype, flagger, **kwargs):
+        super(Unfolder, self).__init__(**kwargs)
+        self.children = [prototype, flagger]
+
+    def get_dim(self, name):
+        if name in ('inputs', 'states'):
+            return self.children[0].dim
+        else:
+            return super(Unfolder, self).get_dim(name)
+
+    #def initial_state(self, state_name, batch_size, *args, **kwargs):
+
+    @recurrent(sequences=[], states=['states'], outputs=['states', 'flags'],
+               contexts=['inputs'])
+    def apply(self, inputs=None, states=None, **kwargs):
+        outputs = self.children[0].apply(
+                           inputs=inputs,
+                           states=states,
+                           iterate=False,
+                           **kwargs)
+        flags = self.children[1].apply(outputs).sum()
+        outputs = [outputs, flags]
+        return outputs
+    #TODO define outputs_info, define RecurrentFlag class
 
 class Unfolder(Initializable, BaseRecurrent):
     """Unfolder network
