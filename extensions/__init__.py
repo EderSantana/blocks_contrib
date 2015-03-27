@@ -1,5 +1,5 @@
 import numpy as np
-from blocks.extensions import TrainingExtension, SimpleExtension
+from blocks.extensions import SimpleExtension
 from blocks.extensions.monitoring import MonitoringExtension
 from blocks.monitoring.evaluators import DatasetEvaluator
 import cPickle
@@ -51,6 +51,7 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
         self.validation_cost = variables[0].name
         self.cost_name=cost_name
 
+
     def do(self, callback_name, *args):
         """Write the values of monitored variables to the log."""
         logger.info("Monitoring on auxiliary data started")
@@ -67,6 +68,7 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
             self.add_records(self.main_loop.log, {'Saved Best':'True'}.items())
         elif self.prev_best <= value_dict[self.cost_name]:
             self.add_records(self.main_loop.log, {'Saved Best':'False'}.items())
+
 
 class ValidateAndSave(SimpleExtension):
     """Validates and saves an external model based on a given function
@@ -90,6 +92,7 @@ class ValidateAndSave(SimpleExtension):
 
         super(ValidateAndSave, self).__init__(**kwargs)
 
+
     def do(self, callback_name, *args):
         self.valid_history.append(self.validator())
         print 'Im printing'
@@ -107,6 +110,7 @@ class ValidateAndSave(SimpleExtension):
                         self.main_loop.status.epochs_done
             ))
 
+
 class TwitterAnnouncer(SimpleExtension):
     """Tweets you announcing the training is done"""
     def __init__(self, token, token_key, con_secret, con_secret_key, **kwargs):
@@ -115,13 +119,14 @@ class TwitterAnnouncer(SimpleExtension):
         kwargs.setdefault("after_training", True)
         super(TwitterAnnouncer, self).__init__(**kwargs)
 
+
     def do(self, which_callback, *args):
         if which_callback == "after_training":
             iterdone = self.main_loop.status.iterations_done
             cost = self.main_loop.log.current_row.cost
             time = self.main_loop.log.current_row.total_took
-            status = 'Deep learning done! | #Iter: %d ' \
-                     '| Cost: %.2f} | Time: %.2f' % (
-                     iterdone, cost, time)
+            status = r'Deep learning done! | Iter: {0}' \
+                    '| Cost: {1:.2f} | Time: {2:.2f}'
+            status = status.format(iterdone, cost, time)
 
             self.twitter.statuses.update(status=status)
