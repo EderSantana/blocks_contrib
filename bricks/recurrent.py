@@ -9,26 +9,43 @@ from blocks.bricks.recurrent import BaseRecurrent, recurrent
 
 
 class ConditionedRecurrent(BaseRecurrent):
+    """ConditionedRecurrent network
 
+    A recurrent network that unfolds an input vector to a sequence.
+
+    Parameters
+    ----------
+    wrapped : instance of :class:`BaseRecurrent`
+        A brick that will get the input vector.
+
+    Notes
+    -----
+    See :class:`.BaseRecurrent` for initialization parameters.
+
+    """
     def __init__(self, wrapped, **kwargs):
         super(ConditionedRecurrent, self).__init__(**kwargs)
         self.wrapped = wrapped
         self.children=[wrapped]
 
     def get_dim(self, name):
-        if name == 'context':
+        if name == 'attended':
             return self.wrapped.get_dim('inputs')
-        if name == 'context_mask':
+        if name == 'attended_mask':
             return 0
         return self.wrapped.get_dim(name)
 
-    @application(contexts=['context', 'context_mask'])
+    @application(contexts=['attended', 'attended_mask'])
     def apply(self, **kwargs):
-        context = kwargs['context']
+        context = kwargs['attended']
         kwargs['inputs'] += context.dimshuffle('x',0,1)
         for context in ConditionedRecurrent.apply.contexts:
             kwargs.pop(context)
         return self.wrapped.apply(**kwargs)
+
+    @apply.delegate
+    def apply_delegate(self):
+        return self.wrapped.apply
 
 
 class Unfolder(Initializable, BaseRecurrent):
