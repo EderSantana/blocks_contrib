@@ -1,7 +1,7 @@
 from theano import tensor
 from blocks.base import lazy, application
 from blocks.bricks import Initializable
-from blocks.bricks.sequence_generators import TrivialEmitter
+from blocks.bricks.sequence_generators import TrivialEmitter, TrivialFeedback
 
 
 class MLPEmitter(TrivialEmitter, Initializable):
@@ -27,6 +27,7 @@ class MLPEmitter(TrivialEmitter, Initializable):
 
     @application
     def cost(self, readouts, outputs):
+        # the next two clips are for sanity reasons only
         outputs  = tensor.clip(outputs, 0, 1)
         readouts = tensor.clip(readouts,0, 1)
         return tensor.nnet.binary_crossentropy(readouts,
@@ -40,3 +41,24 @@ class MLPEmitter(TrivialEmitter, Initializable):
         if name == 'outputs':
             return self.mlp.output_dim
         return super(MLPEmitter, self).get_dim(name)
+
+
+class MLPFeedback(TrivialFeedback, Initializable):
+    """A generica MLP feedback
+
+    Parameters
+    ----------
+
+    mlp : Brick :class:`bricks.MLP`
+        defines the transformation from output back to hidden state
+    """
+    @lazy
+    def __init__(self, mlp=None, **kwargs):
+        self.mlp = mlp
+        kwargs['ouput_dim'] = mlp.output_dim
+        super(MLPFeedback, self).__init__(**kwargs)
+        self.children = [mlp]
+
+    @application(outputs=['feedback'])
+    def feedback(self, outputs):
+        return self.mlp.apply(outputs)
