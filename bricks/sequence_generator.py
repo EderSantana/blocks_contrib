@@ -1,5 +1,5 @@
 from theano import tensor
-from blocks.base import lazy, application
+from blocks.bricks.base import lazy, application
 from blocks.bricks import Initializable
 from blocks.bricks.sequence_generators import TrivialEmitter, TrivialFeedback
 
@@ -28,19 +28,22 @@ class MLPEmitter(TrivialEmitter, Initializable):
     @application
     def cost(self, readouts, outputs):
         # the next two clips are for sanity reasons only
-        outputs  = tensor.clip(outputs, 0, 1)
-        readouts = tensor.clip(readouts,0, 1)
+        #outputs  = tensor.clip(outputs, 1e-6, 1)
+        #readouts = tensor.clip(readouts, 1e-6, 1)
+        #outputs = tensor.nnet.sigmoid(outputs)
+        #readouts = tensor.nnet.sigmoid(readouts)
         return tensor.nnet.binary_crossentropy(readouts,
                   outputs).sum(axis=readouts.ndim-1)
+        #return tensor.sqr(readouts - outputs).sum(axis=readouts.ndim-1)
 
     #@application
     #def initial_outputs(self, batch_size, *args, **kwargs):
     #    return tensor.zeros((batch_size, self.mlp.output_dim))
 
-    def get_dim(self, name):
-        if name == 'outputs':
-            return self.mlp.output_dim
-        return super(MLPEmitter, self).get_dim(name)
+    #def get_dim(self, name):
+    #    if name == 'outputs':
+    #        return self.mlp.output_dim
+    #    return super(MLPEmitter, self).get_dim(name)
 
 
 class MLPFeedback(TrivialFeedback, Initializable):
@@ -55,8 +58,8 @@ class MLPFeedback(TrivialFeedback, Initializable):
     @lazy
     def __init__(self, mlp=None, **kwargs):
         self.mlp = mlp
-        kwargs['ouput_dim'] = mlp.output_dim
-        super(MLPFeedback, self).__init__(**kwargs)
+        super(MLPFeedback, self).__init__(output_dim=mlp.output_dim,
+                                          **kwargs)
         self.children = [mlp]
 
     @application(outputs=['feedback'])
