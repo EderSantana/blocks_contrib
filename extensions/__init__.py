@@ -41,8 +41,9 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
     PREFIX_SEPARATOR = '_'
     def __init__(self, variables, data_stream, what_to_save,
                  path, updates=None, cost_name='cost', **kwargs):
-        kwargs.setdefault("after_epoch", True)
-        kwargs.setdefault("before_first_epoch", True)
+
+        #kwargs.setdefault("after_epoch", True)
+        #kwargs.setdefault("before_first_epoch", True)
         super(DataStreamMonitoringAndSaving, self).__init__(**kwargs)
         self._evaluator = DatasetEvaluator(variables, updates)
         self.data_stream = data_stream
@@ -50,6 +51,7 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
         self.what_to_save = what_to_save
         self.validation_cost = variables[0].name
         self.cost_name=cost_name
+        self.prev_best = 1e10
 
 
     def do(self, callback_name, *args):
@@ -60,7 +62,7 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
         logger.info("Monitoring on auxiliary data finished")
 
         if callback_name == "before_epoch" and \
-                self.main_loop.log.status.epochs_done == 0:
+                self.main_loop.log.status['epochs_done'] == 0:
             self.prev_best = value_dict[self.validation_cost]
         elif self.prev_best > value_dict[self.validation_cost]:
             logger.info("Saving best model.")
