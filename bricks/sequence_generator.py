@@ -4,6 +4,27 @@ from blocks.bricks import Initializable
 from blocks.bricks.sequence_generators import TrivialEmitter, TrivialFeedback
 
 
+class CostEmitter(TrivialEmitter, Initializable):
+    """A generic MLP emitter with binary crosentropy cost
+
+    Parameters
+    ----------
+    initial_output : int or a scalar :class:`~theano.Variable`
+        The initial output.
+    mlp : Brick :class:`bricks.MLP`
+
+    """
+    @lazy
+    def __init__(self, cost_brick=None, **kwargs):
+        super(CostEmitter, self).__init__(**kwargs)
+        self.cost_brick = cost_brick
+
+    @application
+    def cost(self, readouts, outputs):
+        return self.cost_brick.apply(outputs,
+                readouts).sum(axis=readouts.ndim-1)
+
+
 class NLLEmitter(TrivialEmitter, Initializable):
     """A generic MLP emitter with binary crosentropy cost
 
