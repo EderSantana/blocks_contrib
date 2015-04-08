@@ -4,6 +4,25 @@ from blocks.bricks import Initializable
 from blocks.bricks.sequence_generators import TrivialEmitter, TrivialFeedback
 
 
+class NLLEmitter(TrivialEmitter, Initializable):
+    """A generic MLP emitter with binary crosentropy cost
+
+    Parameters
+    ----------
+    initial_output : int or a scalar :class:`~theano.Variable`
+        The initial output.
+    mlp : Brick :class:`bricks.MLP`
+
+    """
+    @lazy
+    def __init__(self, mlp=None, **kwargs):
+        super(NLLEmitter, self).__init__(**kwargs)
+
+    @application
+    def cost(self, readouts, outputs):
+        return tensor.nnet.binary_crossentropy(readouts,
+                  outputs).sum(axis=readouts.ndim-1)
+
 class MLPEmitter(TrivialEmitter, Initializable):
     """A generic MLP emitter with binary crosentropy cost
 
@@ -65,3 +84,17 @@ class MLPFeedback(TrivialFeedback, Initializable):
     @application(outputs=['feedback'])
     def feedback(self, outputs):
         return self.mlp.apply(outputs)
+
+
+class ThresholdFeedback(TrivialFeedback, Initializable):
+    """A generica MLP feedback
+
+    Parameters
+    ----------
+
+    mlp : Brick :class:`bricks.MLP`
+        defines the transformation from output back to hidden state
+    """
+    @lazy
+    def __init__(self, **kwargs):
+        super(ThresholdFeedback, self).__init__(**kwargs)
