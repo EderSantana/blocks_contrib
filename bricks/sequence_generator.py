@@ -18,11 +18,13 @@ class CostEmitter(TrivialEmitter, Initializable):
     def __init__(self, cost_brick=None, **kwargs):
         super(CostEmitter, self).__init__(**kwargs)
         self.cost_brick = cost_brick
+        self.children = [cost_brick]
 
     @application
     def cost(self, readouts, outputs):
-        return self.cost_brick.apply(outputs,
-                readouts).sum(axis=readouts.ndim-1)
+        #return self.cost_brick.apply(outputs,
+        #        readouts).sum(axis=readouts.ndim-1)
+        return tensor.sqr(outputs-readouts).sum(axis=readouts.ndim-1)
 
 
 class NLLEmitter(TrivialEmitter, Initializable):
