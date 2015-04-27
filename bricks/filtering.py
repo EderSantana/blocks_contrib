@@ -71,8 +71,8 @@ class SparseFilter(SimpleRecurrent):
 
         outputs = tensor.dot(states, self.W)
         rec_error = tensor.sqr(inputs - outputs).sum()
-        l1_norm = tensor.sqrt(states**2 + 1e-6).sum()
-        cost = rec_error + gamma * l1_norm
+        l1_norm = (gamma*tensor.sqrt(states**2 + 1e-6)).sum()
+        cost = rec_error + l1_norm
         '''
         grads = tensor.grad(cost,states)
 
@@ -99,15 +99,17 @@ class SparseFilter(SimpleRecurrent):
 
 class VarianceComponent(SparseFilter):
     @lazy(allocation=['dim', 'input_dim'])
-    def __init__(self, dim, input_dim, *args, **kwargs):
-        super(VarianceComponent, self).__init__(dim, *args, **kwargs)
+    def __init__(self, dim, input_dim, layer_below, *args, **kwargs):
+        super(VarianceComponent, self).__init__(dim, input_dim, *args, **kwargs)
+        self.layer_below = layer_below
+        self.children = [self.layer_below]
 
     @recurrent(sequences=[], states=['states', 'accum_1', 'accum_2'],
                outputs=['outputs', 'states',
                   'accum_1', 'accum_2'],
                contexts=['inputs'])
     def apply(self, inputs=None, states=None, accum_1=None,
-              accum_2=None, layer_bellow=None, batch_size=None):
+              accum_2=None, batch_size=None):
         """ The outputs of this function are the higher order
         variance components.
 
@@ -115,18 +117,19 @@ class VarianceComponent(SparseFilter):
         This recurrent method is the estimation process involved in
         filtering.
         """
-        rho = .9
-        lr = .001
-        momentum = .9
-        epsilon = 1e-8
+        # rho = .9
+        # lr = .001
+        # momentum = .9
+        # epsilon = 1e-8
 
         outputs = .05 * (1 + tensor.exp(
                         tensor.dot(states, self.W)))
-        _ = layer_bellow.apply(inputs, gamma=outputs)
-        rec_error = layer_bellow.cost(inputs=inputs,
-                            batch_size=self.batch_size)
+        rec = self.layer_below.apply(inputs=inputs, batch_size=100,
+                                     gamma=outputs, n_steps=100)[0][-1]
+        rec_error = tensor.sqr(inputs - rec).sum()
         l1_norm = tensor.sqrt(states**2 + 1e-6).sum()
         cost = rec_error + .1 * l1_norm
+        '''
         grads = tensor.grad(cost,states)
 
         new_accum_1 = rho * accum_1 + (1 - rho) * grads**2
@@ -134,6 +137,22 @@ class VarianceComponent(SparseFilter):
                 new_accum_1 + epsilon)
         new_states = states + momentum * new_accum_2 - lr * (grads /
                 tensor.sqrt(new_accum_1 + epsilon))
+        '''
+        new_states, new_accum_1, new_accum_2 = RMSPropStep(cost, states,
+                                                           accum_1, accum_2)
         results = [outputs, new_states, new_accum_1, new_accum_2]
 
         return results
+
+    @application
+    def cost(self, inputs, batch_size):
+        u = self.apply(inputs=inputs,batch_size=batch_size,
+                       n_steps=100)[1][-1]
+        u = theano.gradient.disconnected_grad(u)
+        z = self.layer_below.apply(inputs=inputs, batch_size=batch_size,
+                                   gamma=u,
+                                   n_steps=100)[1][-1]
+        z = theano.gradient.disconnected_grad(z)
+        outputs = .05 * (1 + tensor.exp(
+                        tensor.dot(u, self.W)))
+        return (outputs*z).sum() + .001*tensor.sqr(self.W).sum()
