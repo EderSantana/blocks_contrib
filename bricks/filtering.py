@@ -4,7 +4,6 @@ import theano
 from theano import tensor
 from blocks.bricks.recurrent import SimpleRecurrent, recurrent
 from blocks.bricks.base import lazy, application
-from blocks.algorithms import GradientDescent, RMSProp, Momentum, CompositeRule
 from blocks.utils import shared_floatx_nans
 
 
@@ -14,13 +13,12 @@ def RMSPropStep(cost, states, accum_1, accum_2):
     momentum = .9
     epsilon = 1e-8
 
-    grads = tensor.grad(cost,states)
+    grads = tensor.grad(cost, states)
 
     new_accum_1 = rho * accum_1 + (1 - rho) * grads**2
-    new_accum_2 = momentum * accum_2 - lr * grads/ tensor.sqrt(
-            new_accum_1 + epsilon)
+    new_accum_2 = momentum * accum_2 - lr * grads / tensor.sqrt(new_accum_1 + epsilon)
     new_states = states + momentum * new_accum_2 - lr * (grads /
-            tensor.sqrt(new_accum_1 + epsilon))
+                                                         tensor.sqrt(new_accum_1 + epsilon))
     return new_states, new_accum_1, new_accum_2
 
 
@@ -33,7 +31,7 @@ class SparseFilter(SimpleRecurrent):
 
     def _allocate(self):
         self.params.append(shared_floatx_nans((self.dim,
-            self.input_dim), name="W"))
+                           self.input_dim), name="W"))
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
@@ -42,11 +40,11 @@ class SparseFilter(SimpleRecurrent):
             zeros = numpy.zeros((batch_size, dim))
             return theano.shared(zeros.astype(theano.config.floatX))
         return super(SparseFilter, self).initial_state(state_name,
-                batch_size, *args, **kwargs)
+                                                       batch_size, *args, **kwargs)
 
     def get_dim(self, name):
         if name in (SparseFilter.apply.states +
-                SparseFilter.apply.outputs[1:]):
+                    SparseFilter.apply.outputs[1:]):
             return self.dim
         elif name == 'outputs':
             return self.input_dim
@@ -54,10 +52,10 @@ class SparseFilter(SimpleRecurrent):
 
     @recurrent(sequences=[], states=['states', 'accum_1', 'accum_2'],
                outputs=['outputs', 'states',
-                  'accum_1', 'accum_2'],
+                        'accum_1', 'accum_2'],
                contexts=['inputs'])
     def apply(self, inputs=None, states=None, accum_1=None,
-            accum_2=None, gamma=.1):
+              accum_2=None, gamma=.1):
         """ The outputs of this function are the reconstructed/filtered
         version of the input and the coding coefficientes.
         The `states` are the coding coefficients.
@@ -82,10 +80,8 @@ class SparseFilter(SimpleRecurrent):
         new_states = states + momentum * new_accum_2 - lr * (grads /
                 tensor.sqrt(new_accum_1 + epsilon))
         '''
-        new_states, new_accum_1, new_accum_2 = RMSPropStep(
-                cost, states,
-                accum_1, accum_2
-                )
+        new_states, new_accum_1, new_accum_2 = RMSPropStep(cost, states,
+                                                           accum_1, accum_2)
         results = [outputs, new_states, new_accum_1, new_accum_2]
         return results
 
@@ -106,7 +102,7 @@ class VarianceComponent(SparseFilter):
 
     @recurrent(sequences=[], states=['states', 'accum_1', 'accum_2'],
                outputs=['outputs', 'states',
-                  'accum_1', 'accum_2'],
+                        'accum_1', 'accum_2'],
                contexts=['inputs'])
     def apply(self, inputs=None, states=None, accum_1=None,
               accum_2=None, batch_size=None):
@@ -117,27 +113,13 @@ class VarianceComponent(SparseFilter):
         This recurrent method is the estimation process involved in
         filtering.
         """
-        # rho = .9
-        # lr = .001
-        # momentum = .9
-        # epsilon = 1e-8
-
-        outputs = .05 * (1 + tensor.exp(
-                        tensor.dot(states, self.W)))
+        outputs = .05 * (1 + tensor.exp(tensor.dot(states, self.W)))
         rec = self.layer_below.apply(inputs=inputs, batch_size=100,
                                      gamma=outputs, n_steps=100)[0][-1]
         rec_error = tensor.sqr(inputs - rec).sum()
         l1_norm = tensor.sqrt(states**2 + 1e-6).sum()
         cost = rec_error + .1 * l1_norm
-        '''
-        grads = tensor.grad(cost,states)
 
-        new_accum_1 = rho * accum_1 + (1 - rho) * grads**2
-        new_accum_2 = momentum * accum_2 - lr * grads/ tensor.sqrt(
-                new_accum_1 + epsilon)
-        new_states = states + momentum * new_accum_2 - lr * (grads /
-                tensor.sqrt(new_accum_1 + epsilon))
-        '''
         new_states, new_accum_1, new_accum_2 = RMSPropStep(cost, states,
                                                            accum_1, accum_2)
         results = [outputs, new_states, new_accum_1, new_accum_2]
@@ -146,13 +128,16 @@ class VarianceComponent(SparseFilter):
 
     @application
     def cost(self, inputs, batch_size):
-        u = self.apply(inputs=inputs,batch_size=batch_size,
+        u = self.apply(inputs=inputs, batch_size=batch_size,
                        n_steps=100)[1][-1]
         u = theano.gradient.disconnected_grad(u)
         z = self.layer_below.apply(inputs=inputs, batch_size=batch_size,
                                    gamma=u,
                                    n_steps=100)[1][-1]
         z = theano.gradient.disconnected_grad(z)
-        outputs = .05 * (1 + tensor.exp(
-                        tensor.dot(u, self.W)))
-        return (outputs*z).sum() + .001*tensor.sqr(self.W).sum()
+        outputs = .05 * (1 + tensor.exp(tensor.dot(u, self.W)))
+        x_hat = tensor.dot(z, self.layer_below.W)
+        rec_error = tensor.sqr(inputs - x_hat).sum() + .001 * tensor.sqr(self.layer_below.W).sum()
+        final_cost = (outputs*z).sum() + .001*tensor.sqr(self.W).sum()
+        final_cost += rec_error
+        return [final_cost, u]
