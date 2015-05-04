@@ -124,4 +124,4 @@ class VarianceComponent(SparseFilter):
         z = theano.gradient.disconnected_grad(z)
         outputs = .05 * (1 + tensor.exp(tensor.dot(u, self.W)))
         final_cost = (outputs*z).sum() + .001*tensor.sqr(self.W).sum()
-        return [final_cost, u]
+        return [final_cost, z]
