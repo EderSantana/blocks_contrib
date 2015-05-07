@@ -24,12 +24,16 @@ def batch_normalize(mlp, cg):
     return new_cg
 
 
+def diff_abs(z):
+    return tensor.sqrt(tensor.sqr(z)+1e-6)
+
+
 def sparse_filtering_ff(z):
     l1 = tensor.sqrt(z**2 + 1e-8)
-    rnorm = tensor.sqrt((l1**2).sum(axis=0)+1e-8)
-    l1row = l1 / rnorm[None, :]
-    cnorm = tensor.sqrt((l1row**2).sum(axis=1)+1e-8)
-    l1col = l1row / cnorm[:, None]
+    rnorm = diff_abs(l1).sum(axis=1)
+    l1row = l1 / rnorm[:, None, :]
+    cnorm = diff_abs(l1row).sum(axis=2)
+    l1col = l1row / cnorm[:, :, None]
     return l1col
 
 
