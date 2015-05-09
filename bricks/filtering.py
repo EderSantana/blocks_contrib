@@ -6,8 +6,9 @@ from blocks.bricks import Identity, Linear, Initializable
 from blocks.bricks.recurrent import SimpleRecurrent, recurrent, BaseRecurrent
 from blocks.bricks.base import lazy, application
 from blocks.utils import shared_floatx_nans
+from blocks.graph import ComputationGraph
 
-from blocks_contrib.utils import diff_abs
+from blocks_contrib.utils import diff_abs, l2_norm_cost
 floatX = theano.config.floatX
 
 
@@ -42,7 +43,7 @@ class SparseFilter(SimpleRecurrent):
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
         if state_name in self.apply.states:
-            dim = self.get_dim('states')
+            dim = self.get_dim(state_name)
             zeros = numpy.zeros((self.batch_size, dim))
             return theano.shared(zeros.astype(floatX))
         if state_name == 'gamma':
@@ -53,8 +54,8 @@ class SparseFilter(SimpleRecurrent):
                                                        batch_size, *args, **kwargs)
 
     def get_dim(self, name):
-        if name in (SparseFilter.apply.states +
-                    SparseFilter.apply.outputs[1:]) + ['prior', 'gamma']:
+        if name in (self.apply.states +
+                    self.apply.outputs[1:]) + ['prior', 'gamma']:
             return self.dim
         elif name == 'outputs':
             return self.input_dim
@@ -238,3 +239,68 @@ class TemporalSparseFilter(BaseRecurrent, Initializable):
         x_hat = tensor.dot(z, self.proto.W)
         main_cost = tensor.sqr(inputs - x_hat).sum() + .01*tensor.sqr(self.proto.W).sum()
         return main_cost, z, x_hat
+
+
+class VariationalSparseFilter(SparseFilter):
+    @lazy(allocation=['dim', 'input_dim', 'batch_size', 'n_steps'])
+    def __init__(self, mlp, *args, **kwargs):
+        super(VariationalSparseFilter, self).__init__(*args, **kwargs)
+        self.mlp = mlp
+        self.children = [self.mlp, ]
+
+    @recurrent(sequences=['noise'], states=['states_mean', 'accum_1_m', 'accum_2_m',
+                                            'states_log_sigma', 'accum_1_ls', 'accum_2_ls'],
+               outputs=['outputs', 'codes', 'states_mean',
+                        'accum_1_m', 'accum_2_m', 'states_log_sigma', 'accum_1_ls', 'accum_2_ls'],
+               contexts=['inputs', 'prior', 'gamma'])
+    def apply(self, noise=None, inputs=None,
+              states_mean=None, states_log_sigma=None, accum_1_m=None,
+              accum_2_m=None, accum_1_ls=None, accum_2_ls=None, gamma=.1, prior=None):
+        """ The outputs of this function are the reconstructed/filtered
+        version of the input and the coding coefficientes.
+        The `states` are the coding coefficients.
+        This recurrent method is the estimation process involved in
+        filtering.
+
+        """
+        sigma = tensor.exp(states_log_sigma)
+        z = states_mean + noise * sigma
+        if prior is not None:
+            tstates = tensor.dot(z, tensor.eye(self.dim))
+            cost = .01 * diff_abs(tstates - prior).sum()
+        else:
+            cost = 0
+        tinputs = tensor.dot(inputs, tensor.eye(self.input_dim))
+        outputs = self.mlp.apply(z)  # tensor.dot(z, self.W)
+        rec_error = tensor.sqr(tinputs - outputs).sum()
+        l1_mean = diff_abs(states_mean)
+        l1_sigma = diff_abs(sigma - 1)
+        l1_norm = (gamma * (l1_mean + l1_sigma)).sum()
+        cost += rec_error + l1_norm
+        new_means_stuff = RMSPropStep(cost, states_mean, accum_1_m, accum_2_m)
+        new_log_sigma_stuff = RMSPropStep(cost, states_log_sigma, accum_1_ls, accum_2_ls)
+        results = (outputs, z) + new_means_stuff + new_log_sigma_stuff
+        return results
+
+    @application
+    def initial_state(self, state_name, batch_size, *args, **kwargs):
+        if state_name in self.apply.states:
+            dim = self.dim
+            # zeros = numpy.zeros((self.batch_size, dim))
+            # return theano.shared(zeros.astype(floatX))
+            return tensor.zeros((batch_size, dim))
+        if state_name == 'gamma':
+            dim = self.get_dim('gamma')
+            gammas = .1*numpy.ones((self.batch_size, dim))
+            return theano.shared(gammas.astype(floatX))
+        return super(VariationalSparseFilter, self).initial_state(state_name,
+                                                                  batch_size, *args, **kwargs)
+
+    @application
+    def cost(self, inputs, noise, gamma=.1, prior=None):
+        z = self.apply(noise=noise, inputs=inputs, gamma=gamma, prior=prior)[1][-1]
+        z = theano.gradient.disconnected_grad(z)
+        x_hat = self.mlp.apply(z)  # tensor.dot(z, self.W)
+        cost = tensor.sqr(inputs - x_hat).sum()  # + .01*tensor.sqr(self.W).sum()
+        cost += l2_norm_cost(self.mlp, ComputationGraph([cost]), .01)
+        return cost, z, x_hat

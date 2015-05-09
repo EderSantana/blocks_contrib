@@ -1,10 +1,12 @@
 import numpy as np
+import theano
 
 from theano import tensor
 from blocks.filter import VariableFilter, get_brick
 from blocks.roles import OUTPUT, PARAMETER, add_role
 from blocks.utils import shared_floatx
 from blocks.graph import apply_batch_normalization
+floatX = theano.config.floatX
 
 
 def batch_normalize(mlp, cg):
@@ -43,3 +45,10 @@ def l2_norm_cost(mlp, cg, lbd):
     for w in W:
         cost = cost + lbd * tensor.sqr(w).sum()
     return cost
+
+
+def _add_noise(n_steps, batch_size, dim, rfunc=np.random.normal):
+    def func(data):
+        noise = rfunc(0, 1, size=(n_steps, batch_size, dim)).astype(floatX)
+        return (noise,)
+    return func
