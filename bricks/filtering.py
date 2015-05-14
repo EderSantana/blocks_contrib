@@ -2,10 +2,9 @@ import numpy
 import theano
 
 from theano import tensor
-from blocks.bricks import Identity, Linear, Initializable
-from blocks.bricks.recurrent import SimpleRecurrent, recurrent, BaseRecurrent
+from blocks.bricks import Initializable
+from blocks.bricks.recurrent import recurrent, BaseRecurrent
 from blocks.bricks.base import lazy, application
-from blocks.utils import shared_floatx_nans
 from blocks.graph import ComputationGraph
 
 from blocks_contrib.utils import diff_abs, l2_norm_cost
@@ -27,42 +26,29 @@ def RMSPropStep(cost, states, accum_1, accum_2):
     return new_states, new_accum_1, new_accum_2
 
 
-class SparseFilter(SimpleRecurrent):
-    @lazy(allocation=['dim', 'input_dim', 'batch_size', 'n_steps'])
-    def __init__(self, dim, input_dim, batch_size, n_steps, activation=Identity(), *args, **kwargs):
-        super(SparseFilter, self).__init__(dim, activation, *args, **kwargs)
-        self.dim = dim
-        self.input_dim = input_dim
-        self.batch_size = batch_size
-        self.n_steps = n_steps
-
-    def _allocate(self):
-        self.params.append(shared_floatx_nans((self.dim,
-                           self.input_dim), name="W"))
+class SparseFilter(BaseRecurrent, Initializable):
+    def __init__(self, mlp, *args, **kwargs):
+        super(SparseFilter, self).__init__(*args, **kwargs)
+        self.mlp = mlp
+        self.children = [mlp, ]
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
         if state_name in self.apply.states:
             dim = self.get_dim(state_name)
-            zeros = numpy.zeros((self.batch_size, dim))
-            return theano.shared(zeros.astype(floatX))
+            return tensor.zeros((batch_size, dim))
         if state_name == 'gamma':
             dim = self.get_dim('gamma')
-            gammas = .1*numpy.ones((self.batch_size, dim))
-            return theano.shared(gammas.astype(floatX))
+            return .1*tensor.ones((batch_size, dim))
         return super(SparseFilter, self).initial_state(state_name,
                                                        batch_size, *args, **kwargs)
 
     def get_dim(self, name):
         if name in (self.apply.states +
-                    self.apply.outputs[1:]) + ['prior', 'gamma']:
-            return self.dim
-        elif name == 'outputs':
-            return self.input_dim
+                    self.apply.outputs[1:]) + ['prior', 'gamma', 'outputs']:
+            return self.mlp.input_dim
         elif name == 'inputs':
-            return self.input_dim
-        elif name == 'enumerator':
-            return 0
+            return self.mlp.output_dim
         return super(SparseFilter, self).get_dim(name)
 
     @recurrent(sequences=[], states=['states', 'accum_1', 'accum_2'],
@@ -80,14 +66,13 @@ class SparseFilter(SimpleRecurrent):
 
         """
         if prior is not None:
-            tstates = tensor.dot(states, tensor.eye(self.dim))
-            cost = .01 * diff_abs(tstates - prior).sum()
+            cost = .01 * diff_abs(states - prior).sum()
         else:
             cost = 0
-        tinputs = tensor.dot(inputs, tensor.eye(self.input_dim))
-        outputs = tensor.dot(states, self.W)
-        rec_error = tensor.sqr(tinputs - outputs).sum()
-        l1_norm = (gamma*tensor.sqrt(states**2 + 1e-6)).sum()
+        outputs = self.mlp.apply(states)
+        # TODO accept `blocks.bricks.cost` as input to be used as reconstruction cost
+        rec_error = tensor.sqr(inputs - outputs).sum()
+        l1_norm = (gamma * diff_abs(states)).sum()
         cost += rec_error + l1_norm
         new_states, new_accum_1, new_accum_2 = RMSPropStep(cost, states,
                                                            accum_1, accum_2)
@@ -95,21 +80,22 @@ class SparseFilter(SimpleRecurrent):
         return results
 
     @application
-    def cost(self, inputs, gamma=.1, prior=None):
-        z = self.apply(inputs=inputs, gamma=gamma, prior=prior, n_steps=self.n_steps,
-                       batch_size=self.batch_size)[1][-1]
+    def cost(self, inputs, n_steps, batch_size, gamma=.1, prior=None):
+        z = self.apply(inputs=inputs, gamma=gamma, prior=prior, n_steps=n_steps,
+                       batch_size=batch_size)[1][-1]
         z = theano.gradient.disconnected_grad(z)
-        x_hat = tensor.dot(z, self.W)
-        cost = tensor.sqr(inputs - x_hat).sum() + .01*tensor.sqr(self.W).sum()
+        # x_hat = tensor.dot(z, self.W)
+        x_hat = self.mlp.apply(z)
+        cost = tensor.sqr(inputs - x_hat).sum()
+        weights_normalization = l2_norm_cost(self.mlp, ComputationGraph([cost]), .01)
+        cost += weights_normalization
         return cost, z, x_hat
 
 
 class VarianceComponent(SparseFilter):
     @lazy(allocation=['dim', 'input_dim'])
-    def __init__(self, dim, input_dim, layer_below, *args, **kwargs):
-        super(VarianceComponent, self).__init__(dim, input_dim, *args, **kwargs)
-        self.layer_below = layer_below
-        self.children = [self.layer_below]
+    def __init__(self, mlp, *args, **kwargs):
+        super(VarianceComponent, self).__init__(mlp, *args, **kwargs)
 
     def get_dim(self, name):
         if name == ('prev_code', 'prior'):
@@ -120,23 +106,12 @@ class VarianceComponent(SparseFilter):
     def initial_state(self, state_name, batch_size, *args, **kwargs):
         if state_name in self.apply.states + ['prior', 'prev_code']:
             dim = self.get_dim('states')
-            zeros = numpy.zeros((self.batch_size, dim))
-            return theano.shared(zeros.astype(floatX))
+            return tensor.zeros((batch_size, dim))
         if state_name == 'prev_rec':
             dim = self.get_dim('input')
-            zeros = numpy.zeros((self.batch_size, dim))
-            return theano.shared(zeros.astype(floatX))
-        if state_name == 'gamma':
-            dim = self.get_dim('gamma')
-            gammas = .1*numpy.ones((self.batch_size, dim))
-            return theano.shared(gammas.astype(floatX))
+            return tensor.zeros((batch_size, dim))
         return super(VarianceComponent, self).initial_state(state_name,
                                                             batch_size, *args, **kwargs)
-
-    def _initialize(self):
-        W = self.W
-        self.weights_init.initialize(W, self.rng)
-        W.set_value(abs(W.get_value()))
 
     @recurrent(sequences=[], states=['states', 'accum_1', 'accum_2'],
                outputs=['outputs', 'states',
@@ -165,7 +140,7 @@ class VarianceComponent(SparseFilter):
         # else:
         #    rec = self.layer_below.apply(inputs=inputs, batch_size=self.batch_size,
         #                                 gamma=outputs, n_steps=self.n_steps)[0][-1]
-        uW = tensor.dot(states, self.W)
+        uW = self.mlp.apply(states)
         outputs = .05 * (1 + tensor.exp(-uW))
         # outputs = .1 * tensor.nnet.sigmoid(uW)
         prev_l1 = (outputs * diff_abs(prev_code)).sum()
@@ -182,7 +157,7 @@ class VarianceComponent(SparseFilter):
         u = self.apply(batch_size=self.batch_size, prev_code=prev_code,
                        n_steps=self.n_steps, prior=prior)[1][-1]
         u = theano.gradient.disconnected_grad(u)
-        uW = tensor.dot(u, self.W)
+        uW = self.mlp.apply(u)
         outputs = .05 * (1 + tensor.exp(-uW))
         # outputs = .1 * tensor.nnet.sigmoid(uW)
         final_cost = (outputs*prev_code).sum() + .01*tensor.sqr(self.W).sum()
@@ -190,26 +165,15 @@ class VarianceComponent(SparseFilter):
 
 
 class TemporalSparseFilter(BaseRecurrent, Initializable):
-    @lazy(allocation=['dim', 'n_steps', 'batch_size'])
-    def __init__(self, proto, dim, batch_size, n_steps, *args, **kwargs):
+    def __init__(self, proto, n_steps, batch_size, *args, **kwargs):
         super(TemporalSparseFilter, self).__init__(*args, **kwargs)
-        self.dim = dim
-        self.batch_size = batch_size
-        self.n_steps = n_steps
         self.proto = proto
-        # self.sparse_filter = SparseFilter(dim, input_dim, batch_size, *args, **kwargs)
-        self.children = [proto, ]
+        self.n_steps = n_steps
+        self.batch_size = batch_size
+        self.children = [proto, proto.mlp]
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
-        if state_name == 'inputs':
-            dim = self.get_dim('inputs')
-            zeros = numpy.zeros((self.batch_size, dim))
-            return theano.shared(zeros.astype(theano.config.floatX))
-        if state_name == 'states':
-            dim = self.get_dim('states')
-            zeros = numpy.zeros((self.batch_size, dim))
-            return theano.shared(zeros.astype(theano.config.floatX))
         return self.proto.initial_state(state_name,
                                         batch_size, *args, **kwargs)
 
@@ -228,17 +192,19 @@ class TemporalSparseFilter(BaseRecurrent, Initializable):
 
         """
         prior = theano.gradient.disconnected_grad(states)
-        results = self.proto.apply(inputs=inputs, prior=prior, batch_size=self.batch_size,
-                                   n_steps=self.n_steps, **kwargs)
+        results = self.proto.apply(inputs=inputs, prior=prior,
+                                   n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
         return results[0][-1], results[1][-1]
 
     @application
     def cost(self, inputs, **kwargs):
         x_hat, z = self.apply(inputs=inputs, **kwargs)
         z = theano.gradient.disconnected_grad(z)
-        x_hat = tensor.dot(z, self.proto.W)
-        main_cost = tensor.sqr(inputs - x_hat).sum() + .01*tensor.sqr(self.proto.W).sum()
-        return main_cost, z, x_hat
+        x_hat = self.proto.mlp.apply(z)
+        main_cost = tensor.sqr(inputs - x_hat).sum()
+        weights_normalization = l2_norm_cost(self.proto.mlp, ComputationGraph([main_cost]), .01)
+        costs = main_cost + weights_normalization
+        return costs, z, x_hat
 
 
 class VariationalSparseFilter(SparseFilter):
