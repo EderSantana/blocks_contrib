@@ -72,7 +72,8 @@ def pairwise_diff(X, Y=None):
         Has shape ``(n, d, m)``.
     '''
     Y = X if Y is None else Y
-    diffs = X.T.dimshuffle(1, 0, 'x') - Y.T.dimshuffle('x', 0, 1)
+    # diffs = X.T.dimshuffle(1, 0, 'x') - Y.T.dimshuffle('x', 0, 1)
+    diffs = X[:, None, :] - X
     return diffs
 
 
@@ -105,7 +106,7 @@ def distance_matrix(X, Y=None, norm=l2):
     .. [1] https://github.com/breze-no-salt/breze/blob/master/breze/learn/tsne.py
     '''
     diff = pairwise_diff(X, Y)
-    dist = norm(diff, axis=1)
+    dist = norm(diff, axis=-1)
     return dist
 
 

@@ -30,7 +30,7 @@ class GaussianMSE(Cost):
 
 class tSNE(Cost):
     @application(output=['cost'])
-    def apply(self, Y, X, perplexity):
+    def apply(self, Y, P, perplexity):
         '''t-SNE embedding cost
 
         Parameters
@@ -54,11 +54,11 @@ class tSNE(Cost):
         ----------
         .. [1] https://github.com/breze-no-salt/breze/blob/master/breze/learn/tsne.py
         '''
-        q = self._get_probabilities_q(Y)
-        p = self._get_probabilities_p(X, perplexity)
+        Q = self._get_probabilities_q(Y)
+        # p = self._get_probabilities_p(X, perplexity)
 
         # t-distributed stochastic neighbourhood embedding loss.
-        loss = (p * tensor.log(p / q)).sum(axis=-1)
+        loss = (P * tensor.log(P / Q)).sum(axis=-1)
         return loss
 
     def _get_probabilities_q(self, X):
@@ -72,9 +72,9 @@ class tSNE(Cost):
 
     def _get_probabilities_p(self, X, perplexity=30):
         dists = distance_matrix(X, norm=lambda x, axis: l2(x, axis=axis)**2)
-        sigma = dists.sort(axis=1)[:, -perplexity] / 3
-        top = tensor.exp(-dists/(2*sigma[:, None]**2))
-        top = zero_diagonal(top)
+        sigma = 1  # dists.sort(axis=1)[:, -perplexity]
+        top = tensor.exp(-dists/(2*sigma**2))
+        # top = zero_diagonal(top)
         bottom = top.sum(axis=0)
         p = top / bottom
         p = p + p.T
