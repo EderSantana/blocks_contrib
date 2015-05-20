@@ -132,9 +132,10 @@ class VarianceComponent(SparseFilter):
             cost = .01 * diff_abs(states - prior).sum()
         else:
             cost = 0
-        uW = self.mlp.apply(states)
-        outputs = .05 * (1 + tensor.exp(-uW))
+        # uW = self.mlp.apply(states)
+        # outputs = .05 * (1 + tensor.exp(-uW))
         # outputs = .1 * tensor.nnet.sigmoid(uW)
+        outputs = self.get_sparseness(states)
         prev_l1 = (outputs * diff_abs(prev_code)).sum()
         # rec_error = tensor.sqr(inputs - prev_rec).sum()
         l1_norm = diff_abs(states).sum()
@@ -145,12 +146,18 @@ class VarianceComponent(SparseFilter):
         return results
 
     @application
+    def get_sparseness(self, u):
+        uW = self.mlp.apply(u)
+        return .05 * (1 + tensor.exp(-uW))
+
+    @application
     def cost(self, prev_code, prior=None):
         u = self.apply(batch_size=self.batch_size, prev_code=prev_code,
                        n_steps=self.n_steps, prior=prior)[1][-1]
         u = theano.gradient.disconnected_grad(u)
-        uW = self.mlp.apply(u)
-        outputs = .05 * (1 + tensor.exp(-uW))
+        # uW = self.mlp.apply(u)
+        # outputs = .05 * (1 + tensor.exp(-uW))
+        outputs = self.get_sparseness(u)
         # outputs = .1 * tensor.nnet.sigmoid(uW)
         final_cost = (outputs*prev_code).sum() + .01*tensor.sqr(self.W).sum()
         return final_cost, u, outputs
@@ -206,13 +213,26 @@ class TemporalSparseFilter(BaseRecurrent, Initializable):
 
 
 class TemporalVarComp(BaseRecurrent, Initializable):
-    def __init__(self, proto, transition, n_steps, batch_size, *args, **kwargs):
+    def __init__(self, slayer, stransition, clayer, n_steps, batch_size, *args, **kwargs):
+        '''
+        Paramters
+        ---------
+        slayer: `SparseFilter`
+            states layer, does sparse coding
+        stransition: `bricks.MLP`
+            transition function of the sparse coding
+        stransition: `VarianceComponent`
+            causes layers, does variance component learning
+
+        '''
         super(TemporalVarComp, self).__init__(*args, **kwargs)
-        self.proto = proto
+        self.slayer = slayer
+        self.clayer = clayer
+
         self.n_steps = n_steps
         self.batch_size = batch_size
-        self.transition = transition
-        self.children = [proto, proto.mlp, transition]
+        self.stransition = stransition
+        self.children = [slayer, slayer.mlp, clayer, clayer.mlp, stransition]
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
@@ -220,12 +240,15 @@ class TemporalVarComp(BaseRecurrent, Initializable):
                                         batch_size, *args, **kwargs)
 
     def get_dim(self, name):
-        return self.proto.get_dim(name)
+        if name == 'sstates':
+            return self.slayer.get_dim('states')
+        elif name == 'cstates':
+            return self.clayer.get_dim('states')
 
-    @recurrent(sequences=['inputs'], states=['states'],
-               outputs=['outputs', 'states'],
+    @recurrent(sequences=['inputs'], states=['sstates', 'cstates'],
+               outputs=['soutputs', 'sstates', 'coutputs', 'cstates'],
                contexts=[])
-    def apply(self, inputs=None, states=None, **kwargs):
+    def apply(self, inputs=None, sstates=None, cstates=None, **kwargs):
         """ The outputs of this function are the reconstructed/filtered
         version of the input and the coding coefficientes.
         The `states` are the coding coefficients.
@@ -233,44 +256,31 @@ class TemporalVarComp(BaseRecurrent, Initializable):
         filtering.
 
         """
-        prior = theano.gradient.disconnected_grad(states)
-        prior = self.transition.apply(states)
-        results = self.proto.apply(inputs=inputs, prior=prior,
-                                   n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
-        return results[0][-1], results[1][-1]
+        sprior = theano.gradient.disconnected_grad(sstates)
+        sprior = self.transition.apply(sstates)
+        cprior = theano.gradient.disconnected_grad(cstates)
+        gamma = self.clayer.get_sparseness(cprior)
+        cprior = self.transition.apply(cstates)
+        sparse_code = self.slayer.apply(inputs=inputs, sprior=sprior, gamma=gamma,
+                                        n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
+        variance_code = self.slayer.apply(inputs=inputs, cprior=cprior, prev_code=sparse_code[1][-1],
+                                          n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
+        return sparse_code[0][-1], sparse_code[1][-1], variance_code[0][-1], variance_code[1][-1]
 
     @application
     def cost(self, inputs, **kwargs):
-        x_hat, z = self.apply(inputs=inputs, **kwargs)
+        x_hat, z, gammas, u = self.apply(inputs=inputs, **kwargs)
         z = theano.gradient.disconnected_grad(z)
+        u = theano.gradient.disconnected_grad(z)
         prev = self.transition.apply(z)
         innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
         x_hat = self.proto.mlp.apply(z)
-        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error
+        sparseness = (self.clayer.get_sparseness(u) * diff_abs(z)).sum()
+        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error + sparseness
         cg = ComputationGraph([main_cost])
-        weights_normalization = l2_norm_cost(self.proto.mlp, cg, .01)
-        weights_normalization += l2_norm_cost(self.transition, cg, .01)
-        costs = main_cost + weights_normalization
-        return costs, z, x_hat
-
-
-class TemporalVarianceCompoenent(TemporalSparseFilter):
-    def __init__(self, proto, transition, n_steps, batch_size, *args, **kwargs):
-        super(TemporalVarianceCompoenent, self).__init__(
-            proto=proto, transition=transition, n_steps=n_steps,
-            batch_size=batch_size, *args, **kwargs)
-
-    @application
-    def cost(self, inputs, **kwargs):
-        x_hat, z = self.apply(inputs=inputs, **kwargs)
-        z = theano.gradient.disconnected_grad(z)
-        prev = self.transition.apply(z)
-        innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
-        x_hat = self.proto.mlp.apply(z)
-        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error
-        cg = ComputationGraph([main_cost])
-        weights_normalization = l2_norm_cost(self.proto.mlp, cg, .01)
-        weights_normalization += l2_norm_cost(self.transition, cg, .01)
+        weights_normalization = l2_norm_cost(self.slayer.mlp, cg, .01)
+        weights_normalization += l2_norm_cost(self.stransition, cg, .01)
+        weights_normalization += l2_norm_cost(self.clayer, cg, .01)
         costs = main_cost + weights_normalization
         return costs, z, x_hat
 
