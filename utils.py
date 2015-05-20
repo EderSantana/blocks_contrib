@@ -1,6 +1,7 @@
 import numpy as np
 import theano
 
+from sklearn.metrics.pairwise import pairwise_distances
 from theano import tensor
 from blocks.filter import VariableFilter, get_brick
 from blocks.roles import OUTPUT, PARAMETER, add_role
@@ -130,3 +131,79 @@ def zero_diagonal(X):
     '''
     thisid = tensor.identity_like(X)
     return (X - thisid * X)
+
+
+def neighbour_probabilities(X, target_pplx):
+    '''Return a square matrix containing probabilities that points given by `X`
+    in the data are neighbours.
+    Parameters
+    ----------
+    X : array_like
+        2D array containing data points in rows of shape ``(n, d)``.
+    target_pplx : float
+        Desired perplexity.
+    Returns
+    -------
+    P : array_like
+        2D array of shape ``(n, n)`` containing probability that point ``i`` is
+        neighbour of point j in ``P[i. j]``.
+    '''
+    N = X.shape[0]
+
+    # Calculate the distances.
+    dists = pairwise_distances(X, metric='euclidean', squared=True)
+
+    # Parametrize in the log domain for positive standard deviations.
+    precisions = np.ones(X.shape[0]).astype(theano.config.floatX)
+
+    # Do a binary search for good logstds leading to the desired perplexities.
+    minimums = np.empty(X.shape[0]).astype(theano.config.floatX)
+    minimums[...] = -np.inf
+    maximums = np.empty(X.shape[0]).astype(theano.config.floatX)
+    maximums[...] = np.inf
+
+    target_entropy = np.log(target_pplx)
+    for i in range(50):
+        # Calculate perplexities.
+        inpt_top = np.exp(-dists * precisions)
+        inpt_top[range(N), range(N)] = 0
+        inpt_bottom = inpt_top.sum(axis=0)
+
+        p_inpt_nb_cond = inpt_top / inpt_bottom
+        # If we don't add a small term, the logarithm will make NaNs.
+        p_inpt_nb_cond = np.maximum(1E-12, p_inpt_nb_cond)
+        entropy = -(p_inpt_nb_cond * np.log(p_inpt_nb_cond)).sum(axis=0)
+
+        diff = entropy - target_entropy
+        for j in range(N):
+            if abs(diff[j]) < 1e-5:
+                continue
+            elif diff[j] > 0:
+                if maximums[j] == -np.inf or maximums[j] == np.inf:
+                    precisions[j] *= 2
+                else:
+                    precisions[j] = (precisions[j] + maximums[j]) / 2
+                minimums[j] = precisions[j]
+            else:
+                if minimums[j] == -np.inf or minimums[j] == np.inf:
+                    precisions[j] /= 2
+                else:
+                    precisions[j] = (precisions[j] + minimums[j]) / 2
+                maximums[j] = precisions[j]
+
+        # Calculcate p matrix once more and return it.
+        inpt_top = np.exp(-dists * precisions)
+        inpt_top[range(N), range(N)] = 0
+        inpt_bottom = inpt_top.sum(axis=0)
+        # Add a small constant to the denominator against numerical issues.
+        p_inpt_nb_cond = inpt_top / (inpt_bottom + 1e-4)
+
+        # Symmetrize.
+        p_ji = (p_inpt_nb_cond + p_inpt_nb_cond.T)
+
+        # We don't normalize correctly here. But that does not matter, since we
+        # normalize q wrongly in the same way.
+        p_ji /= p_ji.sum()
+        p_ji = np.maximum(1E-12, p_ji)
+
+        return p_ji

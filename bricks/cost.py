@@ -6,8 +6,11 @@ from theano import tensor
 from blocks.bricks.base import application
 from blocks.bricks.cost import Cost
 
-from blocks_contrib.utils import distance_matrix, zero_diagonal, l2
+# from blocks_contrib.utils import distance_matrix, zero_diagonal, l2
+# from _breze_misc import distance_matrix
+from _breze_tsne import zero_diagonal
 floatX = theano.config.floatX
+MACHINE_EPSILON = np.finfo(np.double).eps
 
 
 class GaussianPrior(Cost):
@@ -30,7 +33,7 @@ class GaussianMSE(Cost):
 
 class tSNE(Cost):
     @application(output=['cost'])
-    def apply(self, Y, P, perplexity):
+    def apply(self, Y, P, alpha=1):
         '''t-SNE embedding cost
 
         Parameters
@@ -54,30 +57,31 @@ class tSNE(Cost):
         ----------
         .. [1] https://github.com/breze-no-salt/breze/blob/master/breze/learn/tsne.py
         '''
-        Q = self._get_probabilities_q(Y)
+        Q = self._get_probabilities_q(Y, alpha)
         # p = self._get_probabilities_p(X, perplexity)
 
         # t-distributed stochastic neighbourhood embedding loss.
-        loss = (P * tensor.log(P / Q)).sum(axis=-1)
+        loss = (P * tensor.log(P / Q)).sum()
         return loss
 
-    def _get_probabilities_q(self, X):
-        dists = distance_matrix(X)
-        top = zero_diagonal(1 / (1 + dists))
-        bottom = top.sum(axis=0)
-        q = top / bottom
-        q /= q.sum()
-        q = tensor.maximum(q, 1e-12)
-        return q
+    def _get_probabilities_q(self, X, alpha):
+        n = ((X[:, None, :] - X)**2).sum(axis=-1)
+        n += 1.
+        n /= alpha
+        n **= (alpha + 1.0) / -2.0
+        n = zero_diagonal(n / (2.0 * tensor.sum(n)))
+        Q = tensor.maximum(n, MACHINE_EPSILON)
+        # dists = distance_matrix(X)
+        return Q
 
-    def _get_probabilities_p(self, X, perplexity=30):
-        dists = distance_matrix(X, norm=lambda x, axis: l2(x, axis=axis)**2)
-        sigma = 1  # dists.sort(axis=1)[:, -perplexity]
-        top = tensor.exp(-dists/(2*sigma**2))
-        # top = zero_diagonal(top)
-        bottom = top.sum(axis=0)
-        p = top / bottom
-        p = p + p.T
-        p /= p.sum()
-        p = tensor.maximum(p, 1e-12)
-        return p
+    # def _get_probabilities_p(self, X, perplexity=30):
+    #     dists = distance_matrix(X, norm=lambda x, axis: l2(x, axis=axis)**2)
+    #     sigma = 1  # dists.sort(axis=1)[:, -perplexity]
+    #     top = tensor.exp(-dists/(2*sigma**2))
+    #     # top = zero_diagonal(top)
+    #     bottom = top.sum(axis=0)
+    #     p = top / bottom
+    #     p = p + p.T
+    #     p /= p.sum()
+    #     p = tensor.maximum(p, 1e-12)
+    #     return p
