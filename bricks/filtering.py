@@ -132,14 +132,6 @@ class VarianceComponent(SparseFilter):
             cost = .01 * diff_abs(states - prior).sum()
         else:
             cost = 0
-        # if prev_code is None:
-        #    prev_code = self.layer_below.apply(inputs=inputs, batch_size=self.batch_size,
-        #                                       n_steps=self.n_steps)[1][-1]
-        # if prev_rec is not None:
-        #    rec = prev_rec
-        # else:
-        #    rec = self.layer_below.apply(inputs=inputs, batch_size=self.batch_size,
-        #                                 gamma=outputs, n_steps=self.n_steps)[0][-1]
         uW = self.mlp.apply(states)
         outputs = .05 * (1 + tensor.exp(-uW))
         # outputs = .1 * tensor.nnet.sigmoid(uW)
@@ -165,12 +157,13 @@ class VarianceComponent(SparseFilter):
 
 
 class TemporalSparseFilter(BaseRecurrent, Initializable):
-    def __init__(self, proto, n_steps, batch_size, *args, **kwargs):
+    def __init__(self, proto, transition, n_steps, batch_size, *args, **kwargs):
         super(TemporalSparseFilter, self).__init__(*args, **kwargs)
         self.proto = proto
         self.n_steps = n_steps
         self.batch_size = batch_size
-        self.children = [proto, proto.mlp]
+        self.transition = transition
+        self.children = [proto, proto.mlp, transition]
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
@@ -192,6 +185,7 @@ class TemporalSparseFilter(BaseRecurrent, Initializable):
 
         """
         prior = theano.gradient.disconnected_grad(states)
+        prior = self.transition.apply(states)
         results = self.proto.apply(inputs=inputs, prior=prior,
                                    n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
         return results[0][-1], results[1][-1]
@@ -200,9 +194,83 @@ class TemporalSparseFilter(BaseRecurrent, Initializable):
     def cost(self, inputs, **kwargs):
         x_hat, z = self.apply(inputs=inputs, **kwargs)
         z = theano.gradient.disconnected_grad(z)
+        prev = self.transition.apply(z)
+        innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
         x_hat = self.proto.mlp.apply(z)
-        main_cost = tensor.sqr(inputs - x_hat).sum()
-        weights_normalization = l2_norm_cost(self.proto.mlp, ComputationGraph([main_cost]), .01)
+        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error
+        cg = ComputationGraph([main_cost])
+        weights_normalization = l2_norm_cost(self.proto.mlp, cg, .01)
+        weights_normalization += l2_norm_cost(self.transition, cg, .01)
+        costs = main_cost + weights_normalization
+        return costs, z, x_hat
+
+
+class TemporalVarComp(BaseRecurrent, Initializable):
+    def __init__(self, proto, transition, n_steps, batch_size, *args, **kwargs):
+        super(TemporalVarComp, self).__init__(*args, **kwargs)
+        self.proto = proto
+        self.n_steps = n_steps
+        self.batch_size = batch_size
+        self.transition = transition
+        self.children = [proto, proto.mlp, transition]
+
+    @application
+    def initial_state(self, state_name, batch_size, *args, **kwargs):
+        return self.proto.initial_state(state_name,
+                                        batch_size, *args, **kwargs)
+
+    def get_dim(self, name):
+        return self.proto.get_dim(name)
+
+    @recurrent(sequences=['inputs'], states=['states'],
+               outputs=['outputs', 'states'],
+               contexts=[])
+    def apply(self, inputs=None, states=None, **kwargs):
+        """ The outputs of this function are the reconstructed/filtered
+        version of the input and the coding coefficientes.
+        The `states` are the coding coefficients.
+        This recurrent method is the estimation process involved in
+        filtering.
+
+        """
+        prior = theano.gradient.disconnected_grad(states)
+        prior = self.transition.apply(states)
+        results = self.proto.apply(inputs=inputs, prior=prior,
+                                   n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
+        return results[0][-1], results[1][-1]
+
+    @application
+    def cost(self, inputs, **kwargs):
+        x_hat, z = self.apply(inputs=inputs, **kwargs)
+        z = theano.gradient.disconnected_grad(z)
+        prev = self.transition.apply(z)
+        innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
+        x_hat = self.proto.mlp.apply(z)
+        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error
+        cg = ComputationGraph([main_cost])
+        weights_normalization = l2_norm_cost(self.proto.mlp, cg, .01)
+        weights_normalization += l2_norm_cost(self.transition, cg, .01)
+        costs = main_cost + weights_normalization
+        return costs, z, x_hat
+
+
+class TemporalVarianceCompoenent(TemporalSparseFilter):
+    def __init__(self, proto, transition, n_steps, batch_size, *args, **kwargs):
+        super(TemporalVarianceCompoenent, self).__init__(
+            proto=proto, transition=transition, n_steps=n_steps,
+            batch_size=batch_size, *args, **kwargs)
+
+    @application
+    def cost(self, inputs, **kwargs):
+        x_hat, z = self.apply(inputs=inputs, **kwargs)
+        z = theano.gradient.disconnected_grad(z)
+        prev = self.transition.apply(z)
+        innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
+        x_hat = self.proto.mlp.apply(z)
+        main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error
+        cg = ComputationGraph([main_cost])
+        weights_normalization = l2_norm_cost(self.proto.mlp, cg, .01)
+        weights_normalization += l2_norm_cost(self.transition, cg, .01)
         costs = main_cost + weights_normalization
         return costs, z, x_hat
 
