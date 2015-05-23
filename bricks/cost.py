@@ -8,9 +8,15 @@ from blocks.bricks.cost import Cost
 
 # from blocks_contrib.utils import distance_matrix, zero_diagonal, l2
 # from _breze_misc import distance_matrix
-from _breze_tsne import zero_diagonal
 floatX = theano.config.floatX
 MACHINE_EPSILON = np.finfo(np.double).eps
+
+
+def _zero_diagonal(X):
+    '''zero out the main diagonal
+    '''
+    diag_matrix = tensor.indentity_like(X)
+    return (X - diag_matrix * X)
 
 
 class GaussianPrior(Cost):
@@ -55,7 +61,10 @@ class tSNE(Cost):
 
         References
         ----------
-        .. [1] https://github.com/breze-no-salt/breze/blob/master/breze/learn/tsne.py
+        .. [1] van der Maaten, L.J.P.; Hinton, G.E. (Nov 2008).
+               "Visualizing High-Dimensional Data Using t-SNE". JMLR.
+        .. [2] https://github.com/breze-no-salt/breze/blob/master/breze/learn/tsne.py
+
         '''
         Q = self._get_probabilities_q(Y, alpha)
         # p = self._get_probabilities_p(X, perplexity)
@@ -69,7 +78,7 @@ class tSNE(Cost):
         n += 1.
         n /= alpha
         n **= (alpha + 1.0) / -2.0
-        n = zero_diagonal(n / (2.0 * tensor.sum(n)))
+        n = _zero_diagonal(n / (2.0 * tensor.sum(n)))
         Q = tensor.maximum(n, MACHINE_EPSILON)
         # dists = distance_matrix(X)
         return Q
