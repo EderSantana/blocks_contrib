@@ -6,8 +6,6 @@ from theano import tensor
 from blocks.bricks.base import application
 from blocks.bricks.cost import Cost
 
-# from blocks_contrib.utils import distance_matrix, zero_diagonal, l2
-# from _breze_misc import distance_matrix
 floatX = theano.config.floatX
 MACHINE_EPSILON = np.finfo(np.double).eps
 
