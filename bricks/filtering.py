@@ -93,13 +93,14 @@ class SparseFilter(BaseRecurrent, Initializable):
 
 
 class VarianceComponent(SparseFilter):
-    @lazy(allocation=['dim', 'input_dim'])
     def __init__(self, mlp, *args, **kwargs):
         super(VarianceComponent, self).__init__(mlp, *args, **kwargs)
 
     def get_dim(self, name):
-        if name == ('prev_code', 'prior'):
-            return self.dim
+        if name == 'prev_code':
+            return self.mlp.input_dim
+        if name == 'prior':
+            return self.mlp.outputdim
         return super(VarianceComponent, self).get_dim(name)
 
     @application
@@ -236,8 +237,12 @@ class TemporalVarComp(BaseRecurrent, Initializable):
 
     @application
     def initial_state(self, state_name, batch_size, *args, **kwargs):
-        return self.proto.initial_state(state_name,
-                                        batch_size, *args, **kwargs)
+        if state_name == 'sstates':
+            return self.slayer.initial_state('states',
+                                             batch_size, *args, **kwargs)
+        if state_name == 'cstates':
+            return self.clayer.initial_state('states',
+                                             batch_size, *args, **kwargs)
 
     def get_dim(self, name):
         if name == 'sstates':
@@ -257,13 +262,12 @@ class TemporalVarComp(BaseRecurrent, Initializable):
 
         """
         sprior = theano.gradient.disconnected_grad(sstates)
-        sprior = self.transition.apply(sstates)
+        sprior = self.stransition.apply(sstates)
         cprior = theano.gradient.disconnected_grad(cstates)
         gamma = self.clayer.get_sparseness(cprior)
-        cprior = self.transition.apply(cstates)
-        sparse_code = self.slayer.apply(inputs=inputs, sprior=sprior, gamma=gamma,
-                                        n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
-        variance_code = self.slayer.apply(inputs=inputs, cprior=cprior, prev_code=sparse_code[1][-1],
+        sparse_code = self.slayer.apply(inputs=inputs, prior=sprior, gamma=gamma,
+                                        n_steps=self.n_steps, batch_size=self.batch_size)
+        variance_code = self.clayer.apply(prior=cprior, prev_code=sparse_code[1][-1],
                                           n_steps=self.n_steps, batch_size=self.batch_size, **kwargs)
         return sparse_code[0][-1], sparse_code[1][-1], variance_code[0][-1], variance_code[1][-1]
 
@@ -272,17 +276,17 @@ class TemporalVarComp(BaseRecurrent, Initializable):
         x_hat, z, gammas, u = self.apply(inputs=inputs, **kwargs)
         z = theano.gradient.disconnected_grad(z)
         u = theano.gradient.disconnected_grad(z)
-        prev = self.transition.apply(z)
+        prev = self.stransition.apply(z)
         innovation_error = .01 * diff_abs(z[1:] - prev[:-1]).sum()
-        x_hat = self.proto.mlp.apply(z)
+        x_hat = self.slayer.mlp.apply(z)
         sparseness = (self.clayer.get_sparseness(u) * diff_abs(z)).sum()
         main_cost = tensor.sqr(inputs - x_hat).sum() + innovation_error + sparseness
         cg = ComputationGraph([main_cost])
         weights_normalization = l2_norm_cost(self.slayer.mlp, cg, .01)
         weights_normalization += l2_norm_cost(self.stransition, cg, .01)
-        weights_normalization += l2_norm_cost(self.clayer, cg, .01)
+        weights_normalization += l2_norm_cost(self.clayer.mlp, cg, .01)
         costs = main_cost + weights_normalization
-        return costs, z, x_hat
+        return costs, z, x_hat, u
 
 
 class VariationalSparseFilter(SparseFilter):
