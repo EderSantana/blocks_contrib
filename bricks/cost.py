@@ -13,7 +13,7 @@ MACHINE_EPSILON = np.finfo(np.double).eps
 def _zero_diagonal(X):
     '''zero out the main diagonal
     '''
-    diag_matrix = tensor.indentity_like(X)
+    diag_matrix = tensor.identity_like(X)
     return (X - diag_matrix * X)
 
 
