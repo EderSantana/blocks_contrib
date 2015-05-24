@@ -1,12 +1,10 @@
-import h5py
-
 from fuel.datasets import Dataset
 from fuel.utils import do_not_pickle_attributes
 
 
 @do_not_pickle_attributes('nodes')
 class H5Dataset(Dataset):
-    """An HDF5 dataset.
+    """An eder's H5PY dataset.
 
     Parameters
     ----------
@@ -24,29 +22,29 @@ class H5Dataset(Dataset):
         Optional, if not set will be equal to `sources`.
 
     """
-    def __init__(self, sources, start, stop, path, data_node='Data',
+    def __init__(self, sources, start, stop, h5py_obj, data_node='Data',
                  sources_in_file=None):
         if sources_in_file is None:
             sources_in_file = sources
         self.sources_in_file = sources_in_file
         self.provides_sources = sources
-        self.path = path
+        self.h5py_obj = h5py_obj
         self.data_node = data_node
         self.start = start
         self.stop = stop
         self.num_examples = self.stop - self.start
         self.nodes = None
-        self.open_file(self.path)
+        self.open_file(self.h5py_obj)
         super(H5Dataset, self).__init__(self.provides_sources)
 
-    def open_file(self, path):
-        h5file = h5py.File(path, "r")
+    def open_file(self, h5py_obj):
+        h5file = self.h5py_obj
         node = h5file[self.data_node]
 
         self.nodes = [node[source] for source in self.sources_in_file]
 
     def load(self):
-        self.open_file(self.path)
+        self.open_file(self.h5py_obj)
 
     def get_data(self, state=None, request=None):
         """ Returns data from HDF5 dataset.
