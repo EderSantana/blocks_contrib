@@ -26,6 +26,16 @@ def fft_shit_inv_pairwise_distance(X):
     distance for all delays.
     This functions is memory hungry. Prefer `shift_inv_pairwise_distance`
     below that can be as fast, but requires Numba.
+
+    Parameters
+    ----------
+    X: `numpy.array`
+        tensor with 3 dimensions samples x time x dim
+
+    Returns
+    -------
+    D: `numpy.array`
+        sampless x samples distance matrix
     '''
     S = (X**2).sum(axis=(1, 2))
     Fx = fft(X, axis=1)
@@ -64,6 +74,16 @@ def shift_inv_pairwise_distance(X):
     a delayed displacement between the two rows that provides the smaller
     distance for all delays.
     It better to have Numba installed for speed up
+
+    Parameters
+    ----------
+    X: `numpy.array`
+        tensor with 3 dimensions samples x time x dim
+
+    Returns
+    -------
+    D: `numpy.array`
+        sampless x samples distance matrix
     '''
     S = (X**2).sum(axis=(1, 2))
     xy = _time_shift_invariant_pairwise_product(X)
@@ -79,6 +99,19 @@ def get_shift_inv_probability_matrices(datastream, num_batches, h5path,
     matrices of all the batches of a `fuel.datastream`. This function assumes that
     the data of interest is the first elemeent of each batch. Also it assumes
     that the data was already transposed to the form time x batch x dimension.
+
+    Parameters
+    ----------
+    datastream: `fuel.datastream`
+    num_batches: int
+        total number of batches
+    h5path: str
+        path to save the hdf5 file at
+    shift_inv_pw: function (default: shift_inv_pairwise_distance)
+        a function to calculate pairwise distance matrices
+    perplexity: int > 0
+        perplexity of the probability distributions, which is approximately
+        the number of neighbors each sample has
     '''
     h5obj = h5py.File(h5path)
     dt = h5py.special_dtype(vlen=np.dtype('float32'))
@@ -98,6 +131,17 @@ def get_probability_matrices(datastream, num_batches, h5path, perplexity=30):
     matrices of all the batches of a `fuel.datastream`. This function assumes that
     the data of interest is the first elemeent of each batch. Also it assumes
     that the data was already transposed to the form time x batch x dimension.
+
+    Parameters
+    ----------
+    datastream: `fuel.datastream`
+    num_batches: int
+        total number of batches
+    h5path: str
+        path to save the hdf5 file at
+    perplexity: int > 0
+        perplexity of the probability distributions, which is approximately
+        the number of neighbors each sample has
     '''
     h5obj = h5py.File(h5path)
     dt = h5py.special_dtype(vlen=np.dtype('float32'))
@@ -136,7 +180,7 @@ class Pserver():
 
 
 def probability_matrices_generator(h5path, num_batches):
-    '''Similar to Pserver, but simpler and less usefull.
+    '''Similar to `class:Pserver`, but simpler and less usefull.
     '''
     i = -1
     h5obj = h5py.File(h5path, 'r')
