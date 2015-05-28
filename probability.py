@@ -5,16 +5,18 @@ import numpy as np
 import h5py
 import theano
 
-from numpy import fft, ifft
+from numpy.fft import fft, ifft
 from scipy.spatial.distance import squareform
 from sklearn.manifold.t_sne import _joint_probabilities
 from sklearn.metrics.pairwise import pairwise_distances
 try:
     from numba import autojit
-    has_numba = True
 except:
     print("`numba` is not installed. Calculatating `_shift_inv_dist` will be slow!!!")
-    has_numba = False
+
+    def autojit(func):
+        return func
+
 floatX = theano.config.floatX
 
 
@@ -44,6 +46,7 @@ def fft_shit_inv_pairwise_distance(X):
     return (S[:, None] + S[None, :] - 2*xy.sum(axis=-1))
 
 
+@autojit
 def _time_shift_invariant_pairwise_product(X):
     b, t, d = X.shape
     D1 = np.zeros((b, b))
@@ -61,10 +64,6 @@ def _time_shift_invariant_pairwise_product(X):
                         larger1 = T1
                 D1[i, j] += larger1
     return D1
-
-if has_numba:
-    _time_shift_invariant_pairwise_product = autojit(
-        _time_shift_invariant_pairwise_product)
 
 
 def shift_inv_pairwise_distance(X):
@@ -117,7 +116,7 @@ def get_shift_inv_probability_matrices(datastream, num_batches, h5path,
     dt = h5py.special_dtype(vlen=np.dtype('float32'))
     d = h5obj.create_dataset('probability_matrices', (num_batches, ), dtype=dt)
     for i, b in enumerate(datastream.get_epoch_iterator()):
-        print('Processing batch number {} / {}'.format(i, num_batches))
+        print('Processing batch number {} / {}'.format(i+1, num_batches))
         D = shift_inv_pw(b[0].transpose(1, 0, 2))
         P = _joint_probabilities(D.astype('float64'), perplexity, verbose=False)
         d[i] = P.astype('float32')
