@@ -39,20 +39,20 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
     path: str with the path to save `what_to_save`
     """
     PREFIX_SEPARATOR = '_'
+
     def __init__(self, variables, data_stream, what_to_save,
                  path, updates=None, cost_name='cost', **kwargs):
 
-        #kwargs.setdefault("after_epoch", True)
-        #kwargs.setdefault("before_first_epoch", True)
+        # kwargs.setdefault("after_epoch", True)
+        # kwargs.setdefault("before_first_epoch", True)
         super(DataStreamMonitoringAndSaving, self).__init__(**kwargs)
         self._evaluator = DatasetEvaluator(variables, updates)
         self.data_stream = data_stream
         self.path = path
         self.what_to_save = what_to_save
         self.validation_cost = variables[0].name
-        self.cost_name=cost_name
-        self.prev_best = 1e10
-
+        self.cost_name = cost_name
+        self.prev_best = np.finfo('d').max
 
     def do(self, callback_name, *args):
         """Write the values of monitored variables to the log."""
@@ -61,15 +61,15 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
         self.add_records(self.main_loop.log, value_dict.items())
         logger.info("Monitoring on auxiliary data finished")
 
-        if callback_name == "before_epoch" and \
+        if callback_name == "before_first_epoch" and \
                 self.main_loop.log.status['epochs_done'] == 0:
             self.prev_best = value_dict[self.validation_cost]
         elif self.prev_best > value_dict[self.validation_cost]:
             logger.info("Saving best model.")
-            cPickle.dump(self.what_to_save, file(self.path,'w'), -1)
-            self.add_records(self.main_loop.log, {'Saved Best':'True'}.items())
+            cPickle.dump(self.what_to_save, file(self.path, 'w'), -1)
+            self.add_records(self.main_loop.log, {'Saved Best': 'True'}.items())
         elif self.prev_best <= value_dict[self.cost_name]:
-            self.add_records(self.main_loop.log, {'Saved Best':'False'}.items())
+            self.add_records(self.main_loop.log, {'Saved Best': 'False'}.items())
 
 
 class ValidateAndSave(SimpleExtension):
@@ -121,14 +121,13 @@ class TwitterAnnouncer(SimpleExtension):
         kwargs.setdefault("after_training", True)
         super(TwitterAnnouncer, self).__init__(**kwargs)
 
-
     def do(self, which_callback, *args):
         if which_callback == "after_training":
             iterdone = self.main_loop.status.iterations_done
             cost = self.main_loop.log.current_row.cost
             time = self.main_loop.log.current_row.total_took
             status = r'Deep learning done! | Iter: {0}' \
-                    '| Cost: {1:.2f} | Time: {2:.2f}'
+                     '| Cost: {1:.2f} | Time: {2:.2f}'
             status = status.format(iterdone, cost, time)
 
             self.twitter.statuses.update(status=status)
