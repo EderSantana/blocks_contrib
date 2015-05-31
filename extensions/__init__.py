@@ -71,6 +71,7 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
             self.prev_best = value_dict[self.validation_cost]
         elif self.prev_best <= value_dict[self.cost_name]:
             self.add_records(self.main_loop.log, {'Saved Best': 'False'}.items())
+        cPickle.dump(self.what_to_save, file('last_'+self.path, 'w'), -1)
 
 # TODO delete this
 class ValidateAndSave(SimpleExtension):

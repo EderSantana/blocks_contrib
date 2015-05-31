@@ -7,8 +7,8 @@ from blocks.bricks.base import application
 from blocks.bricks.cost import Cost
 
 floatX = theano.config.floatX
-# MACHINE_EPSILON = np.finfo(np.double).eps
-MACHINE_EPSILON = 1e-12
+MACHINE_EPSILON = np.finfo(np.double).eps
+# MACHINE_EPSILON = 1e-12
 
 
 def _zero_diagonal(X):
