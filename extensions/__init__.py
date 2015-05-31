@@ -61,17 +61,18 @@ class DataStreamMonitoringAndSaving(SimpleExtension, MonitoringExtension):
         self.add_records(self.main_loop.log, value_dict.items())
         logger.info("Monitoring on auxiliary data finished")
 
-        if callback_name == "before_first_epoch" and \
-                self.main_loop.log.status['epochs_done'] == 0:
+        if callback_name == "before_epoch" and \
+           self.main_loop.log.status['epochs_done'] == 0:
             self.prev_best = value_dict[self.validation_cost]
-        elif self.prev_best > value_dict[self.validation_cost]:
+        if self.prev_best > value_dict[self.validation_cost]:
             logger.info("Saving best model.")
             cPickle.dump(self.what_to_save, file(self.path, 'w'), -1)
             self.add_records(self.main_loop.log, {'Saved Best': 'True'}.items())
+            self.prev_best = value_dict[self.validation_cost]
         elif self.prev_best <= value_dict[self.cost_name]:
             self.add_records(self.main_loop.log, {'Saved Best': 'False'}.items())
 
-
+# TODO delete this
 class ValidateAndSave(SimpleExtension):
     """Validates and saves an external model based on a given function
 

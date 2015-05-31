@@ -118,6 +118,7 @@ def get_shift_inv_probability_matrices(datastream, num_batches, h5path,
     for i, b in enumerate(datastream.get_epoch_iterator()):
         print('Processing batch number {} / {}'.format(i+1, num_batches))
         D = shift_inv_pw(b[0].transpose(1, 0, 2))
+        D = D - np.diag(np.diag(D))
         P = _joint_probabilities(D.astype('float64'), perplexity, verbose=False)
         d[i] = P.astype('float32')
     h5obj.close()
