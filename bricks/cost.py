@@ -86,7 +86,7 @@ class tSNE(Cost):
 class EuclideanMI(Cost):
     @application(output=['cost'])
     def apply(self, Y, P, alpha=1, marginal=False):
-        '''Euclidean Multual Information
+        '''Euclidean Mutual Information
 
         Parameters
         ----------
