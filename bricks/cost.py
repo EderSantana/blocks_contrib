@@ -82,14 +82,43 @@ class tSNE(Cost):
         # dists = distance_matrix(X)
         return Q
 
-    # def _get_probabilities_p(self, X, perplexity=30):
-    #     dists = distance_matrix(X, norm=lambda x, axis: l2(x, axis=axis)**2)
-    #     sigma = 1  # dists.sort(axis=1)[:, -perplexity]
-    #     top = tensor.exp(-dists/(2*sigma**2))
-    #     # top = zero_diagonal(top)
-    #     bottom = top.sum(axis=0)
-    #     p = top / bottom
-    #     p = p + p.T
-    #     p /= p.sum()
-    #     p = tensor.maximum(p, 1e-12)
-    #     return p
+
+class EuclideanMI(Cost):
+    @application(output=['cost'])
+    def apply(self, Y, P, alpha=1, marginal=False):
+        '''Euclidean Multual Information
+
+        Parameters
+        ----------
+
+        Y: `tensor.matrix`
+            Embedding points in the mapping space
+
+        P: `tensor.matrix`
+            Original data's conditional probability matrix
+
+        alpha: float
+            Degrees of freedom in the Student-t distribution
+
+        References
+        ----------
+        .. [1] Jose C Principe, et. al. Information Theoretic Learning.
+               Wiley Press
+        '''
+        Q = self._get_probabilities_q(Y, alpha)
+
+        # t-distributed stochastic neighbourhood embedding loss.
+        if marginal:
+            P = P.sum(axis=1)
+            Q = Q.sum(axis=1)
+        loss = tensor.sqr(P-Q).sum()
+        return loss
+
+    def _get_probabilities_q(self, X, alpha):
+        n = ((X[:, None, :] - X)**2).sum(axis=-1)
+        n += 1.
+        n /= alpha
+        n **= (alpha + 1.0) / -2.0
+        n = _zero_diagonal(n / (2.0 * tensor.sum(n)))
+        Q = tensor.maximum(n, MACHINE_EPSILON)
+        return Q
