@@ -31,9 +31,9 @@ class Meanizer():
 '''Helper functions to generate rotating videos from images '''
 
 
-def _allrotations(image, N):
+def _allrotations(image, N, img_size=784):
     angles = np.linspace(0, 350, N)
-    R = np.zeros((N, 784))
+    R = np.zeros((N, img_size))
     for i in xrange(N):
         img = rotate(image, angles[i])
         R[i] = img.flatten()
@@ -48,7 +48,7 @@ def rotated_dataset(n_steps, img_shape=(28, 28)):
         newfirst = data[0]
         Rval = np.zeros((n_steps, newfirst.shape[0], newfirst.shape[1]))
         for i, sample in enumerate(newfirst):
-            Rval[:, i, :] = _allrotations(sample.reshape(img_shape), n_steps)
+            Rval[:, i, :] = _allrotations(sample.reshape(img_shape), n_steps, img_shape.prod())
         Rval = Rval.astype(floatX)
         ret = (Rval, ) + data[1:]
         return ret
