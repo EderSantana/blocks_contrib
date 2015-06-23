@@ -48,7 +48,7 @@ def rotated_dataset(n_steps, img_shape=(28, 28)):
         newfirst = data[0]
         Rval = np.zeros((n_steps, newfirst.shape[0], newfirst.shape[1]))
         for i, sample in enumerate(newfirst):
-            Rval[:, i, :] = _allrotations(sample.reshape(img_shape), n_steps, img_shape.prod())
+            Rval[:, i, :] = _allrotations(sample.reshape(img_shape), n_steps, np.prod(img_shape))
         Rval = Rval.astype(floatX)
         ret = (Rval, ) + data[1:]
         return ret
