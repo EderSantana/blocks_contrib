@@ -40,7 +40,7 @@ def _allrotations(image, N):
     return R
 
 
-def rotated_dataset(n_steps):
+def rotated_dataset(n_steps, img_shape=(28, 28)):
     '''Generate rotated images.
     This functions is supposed to be used with `fuel.transformer.Mapping`
     '''
@@ -48,7 +48,8 @@ def rotated_dataset(n_steps):
         newfirst = data[0]
         Rval = np.zeros((n_steps, newfirst.shape[0], newfirst.shape[1]))
         for i, sample in enumerate(newfirst):
-            Rval[:, i, :] = _allrotations(sample.reshape((28, 28)), n_steps)
+            Rval[:, i, :] = _allrotations(sample.reshape(img_shape), n_steps)
         Rval = Rval.astype(floatX)
-        return (Rval, data[1])
+        ret = (Rval, ) + data[1:]
+        return ret
     return func
