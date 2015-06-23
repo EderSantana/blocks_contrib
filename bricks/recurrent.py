@@ -26,7 +26,7 @@ class ConditionedRecurrent(BaseRecurrent):
     def __init__(self, wrapped, **kwargs):
         super(ConditionedRecurrent, self).__init__(**kwargs)
         self.wrapped = wrapped
-        self.children=[wrapped]
+        self.children = [wrapped, ]
 
     def get_dim(self, name):
         if name == 'attended':
@@ -38,7 +38,10 @@ class ConditionedRecurrent(BaseRecurrent):
     @application(contexts=['attended', 'attended_mask'])
     def apply(self, **kwargs):
         context = kwargs['attended']
-        kwargs['inputs'] += context.dimshuffle('x',0,1)
+        try:
+            kwargs['inputs'] += context.dimshuffle('x', 0, 1)
+        except:
+            kwargs['inputs'] = context.dimshuffle('x', 0, 1)
         for context in ConditionedRecurrent.apply.contexts:
             kwargs.pop(context)
         return self.wrapped.apply(**kwargs)
@@ -83,11 +86,10 @@ class Unfolder(Initializable, BaseRecurrent):
                outputs=['states', 'flags'],
                contexts=['inputs'])
     def apply(self, inputs=None, states=None, **kwargs):
-        outputs = self.children[0].apply(
-                           inputs=inputs,
-                           states=states,
-                           iterate=False,
-                           **kwargs)
+        outputs = self.children[0].apply(inputs=inputs,
+                                         states=states,
+                                         iterate=False,
+                                         **kwargs)
         flags = self.children[1].apply(outputs).sum()
         stop_condition = flags >= .5
         outputs = [outputs, flags]
