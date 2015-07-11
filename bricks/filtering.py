@@ -83,7 +83,7 @@ class SparseFilter(BaseRecurrent, Initializable):
     def cost(self, inputs, n_steps, batch_size, gamma=.1, prior=None):
         z = self.apply(inputs=inputs, gamma=gamma, prior=prior, n_steps=n_steps,
                        batch_size=batch_size)[1][-1]
-        z = theano.gradient.disconnected_grad(z)
+        # z = theano.gradient.disconnected_grad(z)
         # x_hat = tensor.dot(z, self.W)
         x_hat = self.mlp.apply(z)
         cost = tensor.sqr(inputs - x_hat).sum()

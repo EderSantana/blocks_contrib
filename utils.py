@@ -6,26 +6,25 @@ from theano import tensor
 from blocks.filter import VariableFilter, get_brick
 from blocks.roles import OUTPUT, PARAMETER, add_role
 from blocks.utils import shared_floatx
-from blocks.graph import apply_batch_normalization
+# from blocks.graph import apply_batch_normalization
 floatX = theano.config.floatX
 
 
-def batch_normalize(mlp, cg):
-    variables = VariableFilter(bricks=mlp,
-                               roles=[OUTPUT])(cg.variables)
-    gammas = [shared_floatx(np.ones(get_brick(var).output_dim),
-                            name=var.name + '_gamma')
-              for var in variables]
-    for gamma in gammas:
-        add_role(gamma, PARAMETER)
-    betas = [shared_floatx(np.zeros(get_brick(var).output_dim),
-                           name=var.name + '_beta')
-             for var in variables]
-    for beta in betas:
-        add_role(beta, PARAMETER)
-    new_cg = apply_batch_normalization(cg, variables, gammas, betas, epsilon=1e-5)
-    return new_cg
-
+# def batch_normalize(mlp, cg):
+#     variables = VariableFilter(bricks=mlp,
+#                                roles=[OUTPUT])(cg.variables)
+#     gammas = [shared_floatx(np.ones(get_brick(var).output_dim),
+#                             name=var.name + '_gamma')
+#               for var in variables]
+#     for gamma in gammas:
+#         add_role(gamma, PARAMETER)
+#     betas = [shared_floatx(np.zeros(get_brick(var).output_dim),
+#                            name=var.name + '_beta')
+#              for var in variables]
+#     for beta in betas:
+#         add_role(beta, PARAMETER)
+#     new_cg = apply_batch_normalization(cg, variables, gammas, betas, epsilon=1e-5)
+#     return new_cg
 
 def diff_abs(z):
     return tensor.sqrt(tensor.sqr(z)+1e-6)
