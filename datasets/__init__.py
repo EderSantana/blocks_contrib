@@ -31,8 +31,8 @@ class Meanizer():
 '''Helper functions to generate rotating videos from images '''
 
 
-def _allrotations(image, N, img_shape=(28, 28)):
-    angles = np.linspace(0, 350, N)
+def _allrotations(image, N, img_shape=(28, 28), final_angle=350):
+    angles = np.linspace(0, final_angle, N)
     R = np.zeros((N, np.prod(img_shape)))
     for i in xrange(N):
         img = rotate(image, angles[i])
@@ -42,7 +42,7 @@ def _allrotations(image, N, img_shape=(28, 28)):
     return R
 
 
-def rotated_dataset(n_steps, img_shape=(28, 28)):
+def rotated_dataset(n_steps, img_shape=(28, 28), final_angle=350):
     '''Generate rotated images.
     This functions is supposed to be used with `fuel.transformer.Mapping`
     '''
@@ -54,7 +54,7 @@ def rotated_dataset(n_steps, img_shape=(28, 28)):
                 I = sample.reshape(img_shape).transpose(1, 2, 0)
             else:
                 I = sample.reshape(img_shape)
-            Rval[:, i, :] = _allrotations(I, n_steps, img_shape)
+            Rval[:, i, :] = _allrotations(I, n_steps, img_shape, final_angle)
         Rval = Rval.astype(floatX)
         ret = (Rval, ) + data[1:]
         return ret
