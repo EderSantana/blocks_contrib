@@ -42,6 +42,21 @@ def _allrotations(image, N, img_shape=(28, 28), final_angle=350):
     return R
 
 
+def diff_lenght_rotated(max_steps, min_steps, img_shape=(28, 28), final_angle=350):
+    def func(data):
+        newfirst = data[0]
+        Rval = [list() for i in range(newfirst.shape[0])]
+        for i, sample in enumerate(newfirst):
+            if len(img_shape) == 3:
+                I = sample.reshape(img_shape).transpose(1, 2, 0)
+            else:
+                I = sample.reshape(img_shape)
+            n_steps = np.random.randint(min_steps, max_steps)
+            Rval[i] = _allrotations(I, n_steps, img_shape, final_angle)
+            ret = (Rval, ) + data[1:]
+            return ret
+
+
 def rotated_dataset(n_steps, img_shape=(28, 28), final_angle=350):
     '''Generate rotated images.
     This functions is supposed to be used with `fuel.transformer.Mapping`
