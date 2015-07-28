@@ -42,7 +42,7 @@ def _allrotations(image, N, img_shape=(28, 28), final_angle=350):
     return R
 
 
-def diff_lenght_rotated(max_steps, min_steps, img_shape=(28, 28), final_angle=350):
+def diff_length_rotated(max_steps, min_steps, img_shape=(28, 28), final_angle=350):
     def func(data):
         newfirst = data[0]
         Rval = [list() for i in range(newfirst.shape[0])]
